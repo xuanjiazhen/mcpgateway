@@ -220,39 +220,78 @@ export class Converter {
 
     // Process regular parameters (path, query, header)
     for (const param of operationParameters) {
-      // Skip references for now
-      if ('$ref' in param) continue
+      // Handle reference objects
+      let resolvedParam: OpenAPIV3.ParameterObject
+      if ('$ref' in param) {
+        const resolved = this.resolveRef<OpenAPIV3.ParameterObject>(param.$ref)
+        if (!resolved) {
+          this.logger.warn(
+            `Failed to resolve parameter reference: ${param.$ref}`,
+          )
+          continue
+        }
+        resolvedParam = resolved
+      } else {
+        resolvedParam = param
+      }
 
       parameters.push({
-        name: param.name,
-        description: param.description,
-        schema: param.schema || { type: 'string' },
-        required: param.required || false,
-        location: param.in as ParameterLocation,
+        name: resolvedParam.name,
+        description: resolvedParam.description,
+        schema: resolvedParam.schema || { type: 'string' },
+        required: resolvedParam.required || false,
+        location: resolvedParam.in as ParameterLocation,
       })
     }
 
     // Process request body if present
-    if (operation.requestBody && !('$ref' in operation.requestBody)) {
-      const content = operation.requestBody.content || {}
+    if (operation.requestBody) {
+      // Handle reference objects for request body
+      let resolvedRequestBody: OpenAPIV3.RequestBodyObject
+      if ('$ref' in operation.requestBody) {
+        const resolved = this.resolveRef<OpenAPIV3.RequestBodyObject>(
+          operation.requestBody.$ref,
+        )
+        if (!resolved) {
+          this.logger.warn(
+            `Failed to resolve request body reference: ${operation.requestBody.$ref}`,
+          )
+          return parameters
+        }
+        resolvedRequestBody = resolved
+      } else {
+        resolvedRequestBody = operation.requestBody
+      }
+
+      const content = resolvedRequestBody.content || {}
       const jsonSchema = content['application/json']?.schema
 
       if (jsonSchema) {
-        // For request body, add parameters from the schema properties
-        if (!('$ref' in jsonSchema) && jsonSchema.properties) {
+        // Resolve schema if it's a reference
+        const resolvedSchema = this.resolveSchema(jsonSchema)
+        if (resolvedSchema && resolvedSchema.properties) {
           for (const [propName, propSchema] of Object.entries(
-            jsonSchema.properties,
+            resolvedSchema.properties,
           )) {
-            parameters.push({
-              name: propName,
-              description:
-                typeof propSchema === 'object' && !('$ref' in propSchema)
-                  ? propSchema.description
-                  : undefined,
-              schema: propSchema,
-              required: jsonSchema.required?.includes(propName) || false,
-              location: 'body',
-            })
+            // Resolve property schema if needed
+            let resolvedPropSchema: OpenAPIV3.SchemaObject | null
+            if (typeof propSchema === 'object' && '$ref' in propSchema) {
+              resolvedPropSchema = this.resolveSchema(propSchema)
+            } else if (typeof propSchema === 'object') {
+              resolvedPropSchema = propSchema
+            } else {
+              continue
+            }
+
+            if (resolvedPropSchema) {
+              parameters.push({
+                name: propName,
+                description: resolvedPropSchema.description,
+                schema: resolvedPropSchema,
+                required: resolvedSchema.required?.includes(propName) || false,
+                location: 'body',
+              })
+            }
           }
         }
       }
@@ -341,20 +380,38 @@ export class Converter {
       const response = responses[statusCode]
       if (!response) continue
 
-      // Skip references
-      if ('$ref' in response) continue
+      // Handle reference objects
+      let resolvedResponse: OpenAPIV3.ResponseObject
+      if ('$ref' in response) {
+        const resolved = this.resolveRef<OpenAPIV3.ResponseObject>(
+          response.$ref,
+        )
+        if (!resolved) {
+          this.logger.warn(
+            `Failed to resolve response reference: ${response.$ref}`,
+          )
+          continue
+        }
+        resolvedResponse = resolved
+      } else {
+        resolvedResponse = response
+      }
 
-      const content = response.content || {}
+      const content = resolvedResponse.content || {}
       const jsonContent = content['application/json']
 
       if (jsonContent?.schema) {
-        responseDescription = {
-          contentType: 'application/json',
-          schema: jsonContent.schema as OpenAPIV3.SchemaObject,
-          statusCode,
-          description: response.description || '',
+        // Resolve schema if it's a reference
+        const resolvedSchema = this.resolveSchema(jsonContent.schema)
+        if (resolvedSchema) {
+          responseDescription = {
+            contentType: 'application/json',
+            schema: resolvedSchema,
+            statusCode,
+            description: resolvedResponse.description || '',
+          }
+          break
         }
-        break
       }
     }
 
@@ -404,37 +461,58 @@ export class Converter {
 
     if (schema.properties) {
       for (const [propName, propSchema] of Object.entries(schema.properties)) {
-        if (typeof propSchema !== 'object' || '$ref' in propSchema) continue
-
         const path = parentPath ? `${parentPath}.${propName}` : propName
+
+        // Resolve reference if needed
+        let resolvedSchema: OpenAPIV3.SchemaObject | null
+        if (typeof propSchema === 'object' && '$ref' in propSchema) {
+          resolvedSchema = this.resolveSchema(propSchema)
+          if (!resolvedSchema) {
+            this.logger.warn(
+              `Failed to resolve property schema reference: ${propSchema.$ref}`,
+            )
+            continue
+          }
+        } else if (typeof propSchema === 'object') {
+          resolvedSchema = propSchema
+        } else {
+          continue
+        }
 
         descriptions.push({
           path,
-          type: propSchema.type || 'object',
-          description: propSchema.description,
+          type: resolvedSchema.type || 'object',
+          description: resolvedSchema.description,
         })
 
         // Recursively process nested objects
-        if (propSchema.type === 'object' && propSchema.properties) {
+        if (resolvedSchema.type === 'object' && resolvedSchema.properties) {
           descriptions.push(
-            ...this.generatePropertyDescriptions(propSchema, path),
+            ...this.generatePropertyDescriptions(resolvedSchema, path),
           )
         }
 
         // Process array items
         if (
-          propSchema.type === 'array' &&
-          propSchema.items &&
-          typeof propSchema.items === 'object' &&
-          !('$ref' in propSchema.items)
+          resolvedSchema.type === 'array' &&
+          resolvedSchema.items &&
+          typeof resolvedSchema.items === 'object'
         ) {
+          let arrayItemSchema: OpenAPIV3.SchemaObject | null
+          if ('$ref' in resolvedSchema.items) {
+            arrayItemSchema = this.resolveSchema(resolvedSchema.items)
+          } else {
+            arrayItemSchema = resolvedSchema.items
+          }
+
           if (
-            propSchema.items.type === 'object' &&
-            propSchema.items.properties
+            arrayItemSchema &&
+            arrayItemSchema.type === 'object' &&
+            arrayItemSchema.properties
           ) {
             descriptions.push(
               ...this.generatePropertyDescriptions(
-                propSchema.items,
+                arrayItemSchema,
                 `${path}[]`,
               ),
             )
@@ -444,5 +522,52 @@ export class Converter {
     }
 
     return descriptions
+  }
+
+  /**
+   * Resolve a $ref reference to its actual object
+   */
+  private resolveRef<T = any>(ref: string): T | null {
+    if (!this.document || !ref.startsWith('#/')) {
+      return null
+    }
+
+    const path = ref.substring(2).split('/')
+    let current: any = this.document
+
+    try {
+      for (const segment of path) {
+        current = current[segment]
+        if (current === undefined) {
+          this.logger.error(
+            `Cannot resolve $ref: ${ref} - segment '${segment}' not found`,
+          )
+          return null
+        }
+      }
+      return current as T
+    } catch (error) {
+      this.logger.error(
+        `Error resolving $ref: ${ref} - ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return null
+    }
+  }
+
+  /**
+   * Resolve schema object, handling $ref references
+   */
+  private resolveSchema(
+    schema: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject,
+  ): OpenAPIV3.SchemaObject | null {
+    if ('$ref' in schema) {
+      const resolved = this.resolveRef<OpenAPIV3.SchemaObject>(schema.$ref)
+      if (!resolved) {
+        this.logger.warn(`Failed to resolve schema reference: ${schema.$ref}`)
+        return null
+      }
+      return resolved
+    }
+    return schema
   }
 }
