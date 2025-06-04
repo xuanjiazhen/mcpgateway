@@ -101,6 +101,7 @@ interface Args {
   oauth2Bearer?: string
   api?: string
   apiHost?: string
+  ignoreHeader?: boolean
 }
 
 async function main() {
@@ -189,6 +190,12 @@ async function main() {
     apiHost: {
       type: String,
       description: 'API 服务的基础 URL',
+    },
+    ignoreHeader: {
+      type: Boolean,
+      default: false,
+      description:
+        '忽略OpenAPI接口文档中定义的header参数，不进行转换（默认：false）',
     },
   })
 
@@ -313,6 +320,7 @@ async function main() {
             argv: argsWithDefaults,
             logger,
           }),
+          ignoreHeader: args.ignoreHeader || false,
         })
       } else if (args.outputTransport === 'sse') {
         await apiToSse({
@@ -328,6 +336,7 @@ async function main() {
             argv: argsWithDefaults,
             logger,
           }),
+          ignoreHeader: args.ignoreHeader || false,
         })
       } else {
         throw new Error('API 模式只支持 streamable-http 和 sse 输出传输方式')

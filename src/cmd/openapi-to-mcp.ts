@@ -67,6 +67,11 @@ async function main() {
         type: 'string',
         default: '',
       },
+      'ignore-header': {
+        describe: 'Ignore header parameters in OpenAPI specification',
+        type: 'boolean',
+        default: false,
+      },
     })
     .example(
       '$0 --input petstore.json --output petstore-mcp.yaml',
@@ -97,6 +102,7 @@ async function main() {
     serverName: argv['server-name'],
     toolPrefix: argv['tool-prefix'],
     validate: argv.validate,
+    ignoreHeader: argv['ignore-header'],
   }
 
   // Create template options

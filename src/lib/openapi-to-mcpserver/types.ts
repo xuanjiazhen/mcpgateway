@@ -58,6 +58,7 @@ export interface ConverterOptions {
   serverName?: string
   toolPrefix?: string
   validate?: boolean
+  ignoreHeader?: boolean
 }
 
 /**

@@ -61,6 +61,7 @@ npx -y @michlyn/mcpgateway --stdio "uvx mcp-server-git"
 
 - **`--api "./openapi.json"`**: OpenAPI document or MCP template file (JSON or YAML)
 - **`--apiHost "https://api.example.com"`**: Base URL for the API server
+- **`--ignoreHeader`**: Ignore header parameters defined in OpenAPI specification during conversion (default: false)
 
 ## Usage Scenarios
 
@@ -146,6 +147,12 @@ npx -y @michlyn/mcpgateway \
 npx -y @michlyn/mcpgateway \
     --api ./openapi.json --apiHost https://api.example.com \
     --outputTransport sse --port 8000 --ssePath /sse --messagePath /message
+
+# Ignore header parameters in OpenAPI spec (useful when headers are handled elsewhere)
+npx -y @michlyn/mcpgateway \
+    --api ./openapi.json --apiHost https://api.example.com \
+    --outputTransport streamable-http --port 8000 --httpPath /mcp \
+    --ignoreHeader
 ```
 
 McpGateway automatically detects whether the input file is an OpenAPI specification or an MCP template:
@@ -163,6 +170,9 @@ npx -y @michlyn/mcpgateway openapi-to-mcp --input openapi.json --output mcp-temp
 
 # Or use the direct command
 openapi-to-mcp --input openapi.json --output mcp-template.json
+
+# Ignore header parameters during conversion
+openapi-to-mcp --input openapi.json --output mcp-template.json --ignore-header
 ```
 
 ### Parameters
@@ -174,6 +184,7 @@ openapi-to-mcp --input openapi.json --output mcp-template.json
 - `--format, -f`: Output format (yaml or json) (default: "yaml")
 - `--validate, -v`: Validate OpenAPI spec (default: false)
 - `--template, -t`: Template file path for patching output (default: "")
+- `--ignore-header`: Ignore header parameters in OpenAPI specification (default: false)
 
 ## Client Integrations
 
@@ -522,7 +533,7 @@ Issues and PRs welcome. Please open one if you encounter problems or have featur
 
 欢迎有兴趣的伙伴+v入群技术沟通：
 
-<img src="https://raw.githubusercontent.com/wizizm/mcpgateway/main/mywxqrcode.jpg" alt="微信二维码" width="200"/>
+<img src="https://raw.githubusercontent.com/michlyn/mcpgateway/main/mywxqrcode.jpg" alt="微信二维码" width="200"/>
 
 ```
 

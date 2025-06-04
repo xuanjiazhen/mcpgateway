@@ -1,6 +1,6 @@
 {
   "name": "@michlyn/mcpgateway",
-  "version": "3.0.12",
+  "version": "3.0.13",
   "description": "Enhanced version of supercorp-ai/supergateway, adding streamable http support and the ability to run MCP services based on both OpenAPI protocol interface documentation and higress MCP template files.",
   "repository": {
     "type": "git",
@@ -33,6 +33,7 @@
     "test:direct-sse": "node test/test-direct-sse.js",
     "test:modified-sse": "node test/test-modified-sse-gateway.js",
     "test:ref-resolution": "node test/test-ref-resolution.js",
+    "test:ignore-header": "node test/test-ignore-header.js",
     "test:all": "node test/run-all-tests.js",
     "openapi-to-mcp": "node dist/cmd/openapi-to-mcp.js",
     "pub": "npm run build && npm config set registry https://registry.npmjs.org/ && npm publish --access public",

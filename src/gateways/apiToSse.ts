@@ -23,6 +23,7 @@ interface ApiToSseArgs {
   corsOrigin?: any
   healthEndpoints?: string[]
   logger: Logger
+  ignoreHeader?: boolean
 }
 
 // MCP tool parameters
@@ -92,6 +93,7 @@ function formatCorsOrigin(
 async function loadMcpTemplate(
   templatePath: string,
   logger: Logger,
+  ignoreHeader: boolean = false,
 ): Promise<McpTemplate> {
   try {
     logger.info(`Loading file: ${templatePath}`)
@@ -154,7 +156,10 @@ async function loadMcpTemplate(
 
         // Convert OpenAPI to MCP template
         const mcpTemplateContent = await convertOpenApiToMcpServer(
-          { input: templatePath },
+          {
+            input: templatePath,
+            ignoreHeader: ignoreHeader,
+          },
           {},
           templatePath.endsWith('.json') ? 'json' : 'yaml',
           logger,
@@ -600,7 +605,11 @@ export const apiToSse = async (args: ApiToSseArgs) => {
   // Load MCP template
   let mcpTemplate: McpTemplate
   try {
-    mcpTemplate = await loadMcpTemplate(args.mcpTemplateFile, logger)
+    mcpTemplate = await loadMcpTemplate(
+      args.mcpTemplateFile,
+      logger,
+      args.ignoreHeader,
+    )
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     logger.error(`Failed to load MCP template: ${msg}`)

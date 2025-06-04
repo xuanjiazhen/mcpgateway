@@ -22,6 +22,7 @@ interface ApiToStreamableHttpArgs {
   corsOrigin?: any
   healthEndpoints?: string[]
   logger: Logger
+  ignoreHeader?: boolean
 }
 
 // MCP tool parameters
@@ -91,6 +92,7 @@ function formatCorsOrigin(
 async function loadMcpTemplate(
   templatePath: string,
   logger: Logger,
+  ignoreHeader: boolean = false,
 ): Promise<McpTemplate> {
   try {
     logger.info(`Loading file: ${templatePath}`)
@@ -153,7 +155,10 @@ async function loadMcpTemplate(
 
         // Convert OpenAPI to MCP template
         const mcpTemplateContent = await convertOpenApiToMcpServer(
-          { input: templatePath },
+          {
+            input: templatePath,
+            ignoreHeader: ignoreHeader,
+          },
           {},
           templatePath.endsWith('.json') ? 'json' : 'yaml',
           logger,
@@ -752,7 +757,11 @@ export const apiToStreamableHttp = async (args: ApiToStreamableHttpArgs) => {
   }
 
   // Load MCP template
-  const mcpTemplate = await loadMcpTemplate(args.mcpTemplateFile, logger)
+  const mcpTemplate = await loadMcpTemplate(
+    args.mcpTemplateFile,
+    logger,
+    args.ignoreHeader,
+  )
 
   // Create MCP config file endpoint (for debugging)
   app.get('/mcp-config', (req, res) => {

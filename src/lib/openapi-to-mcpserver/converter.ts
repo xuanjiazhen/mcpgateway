@@ -23,6 +23,7 @@ export class Converter {
   private serverName: string
   private toolPrefix: string
   private logger: Logger
+  private ignoreHeader: boolean
 
   /**
    * Create a new converter instance
@@ -36,6 +37,7 @@ export class Converter {
     this.serverName = options.serverName || 'openapi-server'
     this.toolPrefix = options.toolPrefix || ''
     this.logger = logger
+    this.ignoreHeader = options.ignoreHeader || false
   }
 
   /**
@@ -233,6 +235,10 @@ export class Converter {
         resolvedParam = resolved
       } else {
         resolvedParam = param
+      }
+
+      if (this.ignoreHeader && resolvedParam.in === 'header') {
+        continue
       }
 
       parameters.push({
