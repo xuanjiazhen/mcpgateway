@@ -185,7 +185,8 @@ async function main() {
     },
     api: {
       type: String,
-      description: 'MCP模板文件路径（JSON或YAML格式）',
+      description:
+        'MCP模板文件路径（JSON或YAML格式）或远程文件URL（支持http://和https://）',
     },
     apiHost: {
       type: String,

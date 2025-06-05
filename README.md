@@ -59,9 +59,47 @@ npx -y @michlyn/mcpgateway --stdio "uvx mcp-server-git"
 
 ### API Integration Options
 
-- **`--api "./openapi.json"`**: OpenAPI document or MCP template file (JSON or YAML)
+- **`--api "./openapi.json"`**: OpenAPI document or MCP template file (JSON or YAML), supports both local file paths and remote URLs (http:// or https://)
 - **`--apiHost "https://api.example.com"`**: Base URL for the API server
 - **`--ignoreHeader`**: Ignore header parameters defined in OpenAPI specification during conversion (default: false)
+
+#### Remote URL Support
+
+The `--api` parameter now supports downloading files from remote URLs. This is useful for:
+
+- Loading OpenAPI specifications from API documentation servers
+- Using centralized configuration files stored on web servers
+- Fetching MCP templates from content delivery networks
+
+**Examples:**
+
+```bash
+# Using a remote OpenAPI specification
+npx -y @michlyn/mcpgateway \
+    --api https://api.example.com/openapi.json \
+    --apiHost https://api.example.com \
+    --outputTransport streamable-http
+
+# Using a remote MCP template file
+npx -y @michlyn/mcpgateway \
+    --api https://cdn.example.com/mcp-templates/my-service.yaml \
+    --apiHost https://api.example.com \
+    --outputTransport sse
+
+# With URL encoding (Chinese characters in path)
+npx -y @michlyn/mcpgateway \
+    --api "http://localhost:8081/bsp-admin/files/mcp/%E6%84%8F%E8%A7%81%E5%8F%8D%E9%A6%88.json" \
+    --apiHost https://api.example.com \
+    --outputTransport streamable-http
+```
+
+**Features:**
+
+- Automatic file type detection from URL extension (.json, .yaml, .yml)
+- Supports standard HTTP/HTTPS protocols
+- Automatic cleanup of temporary files used during conversion
+- Detailed logging of download process
+- Error handling for network failures and invalid URLs
 
 ## Usage Scenarios
 

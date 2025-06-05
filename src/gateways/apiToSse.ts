@@ -12,6 +12,7 @@ import path from 'path'
 import fs from 'fs/promises'
 import yaml from 'js-yaml'
 import { z } from 'zod'
+import os from 'os'
 
 interface ApiToSseArgs {
   apiHost: string
@@ -87,8 +88,47 @@ function formatCorsOrigin(
 }
 
 /**
+ * Check if the path is a URL
+ */
+function isUrl(path: string): boolean {
+  try {
+    const url = new URL(path)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Download file from URL
+ */
+async function downloadFile(url: string, logger: Logger): Promise<string> {
+  logger.info(`Downloading file from URL: ${url}`)
+
+  try {
+    const response = await fetch(url)
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const content = await response.text()
+    logger.info(
+      `Successfully downloaded file from ${url}, size: ${content.length} bytes`,
+    )
+
+    return content
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logger.error(`Failed to download file from ${url}: ${msg}`)
+    throw new Error(`Failed to download file from ${url}: ${msg}`)
+  }
+}
+
+/**
  * Load MCP template file
  * If it's an OpenAPI specification, automatically convert it to MCP template
+ * Supports both local files and remote URLs
  */
 async function loadMcpTemplate(
   templatePath: string,
@@ -98,24 +138,55 @@ async function loadMcpTemplate(
   try {
     logger.info(`Loading file: ${templatePath}`)
 
-    try {
-      await fs.access(templatePath)
-    } catch (err) {
-      logger.error(`File does not exist: ${templatePath}`)
-      throw new Error(`File does not exist: ${templatePath}`)
+    let fileContent: string
+    let fileExtension: string
+
+    // Check if it's a URL or local file
+    if (isUrl(templatePath)) {
+      // Download from URL
+      fileContent = await downloadFile(templatePath, logger)
+
+      // Determine file extension from URL path or Content-Type
+      try {
+        const url = new URL(templatePath)
+        const urlPath = url.pathname
+        const ext = path.extname(urlPath).toLowerCase()
+
+        if (ext === '.json' || ext === '.yaml' || ext === '.yml') {
+          fileExtension = ext
+        } else {
+          // Default to .json if extension cannot be determined
+          fileExtension = '.json'
+          logger.warn(
+            `Cannot determine file extension from URL, defaulting to JSON format`,
+          )
+        }
+      } catch {
+        fileExtension = '.json'
+      }
+    } else {
+      // Read local file
+      try {
+        await fs.access(templatePath)
+      } catch (err) {
+        logger.error(`File does not exist: ${templatePath}`)
+        throw new Error(`File does not exist: ${templatePath}`)
+      }
+
+      fileContent = await fs.readFile(templatePath, 'utf-8')
+      fileExtension = path.extname(templatePath).toLowerCase()
     }
 
-    // Read file content
-    const fileContent = await fs.readFile(templatePath, 'utf-8')
     let template: McpTemplate | null = null
     let isOpenApi = false
 
     // Try to parse the file
     try {
       // Choose parsing method based on file extension
-      const parsedContent = templatePath.endsWith('.json')
-        ? JSON.parse(fileContent)
-        : yaml.load(fileContent)
+      const parsedContent =
+        fileExtension === '.json'
+          ? JSON.parse(fileContent)
+          : yaml.load(fileContent)
 
       // Check if it's an OpenAPI specification
       if (parsedContent && typeof parsedContent === 'object') {
@@ -150,31 +221,63 @@ async function loadMcpTemplate(
     if (isOpenApi) {
       try {
         logger.info('Converting OpenAPI specification to MCP template...')
-        const { convertOpenApiToMcpServer } = await import(
-          '../lib/openapi-to-mcpserver/index.js'
-        )
 
-        // Convert OpenAPI to MCP template
-        const mcpTemplateContent = await convertOpenApiToMcpServer(
-          {
-            input: templatePath,
-            ignoreHeader: ignoreHeader,
-          },
-          {},
-          templatePath.endsWith('.json') ? 'json' : 'yaml',
-          logger,
-        )
+        // For URL-based OpenAPI specs, we need to write to a temporary file
+        // because the converter expects a file path
+        let tempFilePath: string | null = null
+        let inputPath = templatePath
 
-        // Parse the generated template
-        if (templatePath.endsWith('.json')) {
-          template = JSON.parse(mcpTemplateContent) as McpTemplate
-        } else {
-          template = yaml.load(mcpTemplateContent) as McpTemplate
+        if (isUrl(templatePath)) {
+          const tempDir = await fs.mkdtemp(
+            path.join(os.tmpdir(), 'mcpgateway-'),
+          )
+          tempFilePath = path.join(tempDir, `openapi${fileExtension}`)
+          await fs.writeFile(tempFilePath, fileContent, 'utf-8')
+          inputPath = tempFilePath
+          logger.info(`Created temporary file for conversion: ${tempFilePath}`)
         }
 
-        logger.info(
-          'OpenAPI specification successfully converted to MCP template',
-        )
+        try {
+          const { convertOpenApiToMcpServer } = await import(
+            '../lib/openapi-to-mcpserver/index.js'
+          )
+
+          // Convert OpenAPI to MCP template
+          const mcpTemplateContent = await convertOpenApiToMcpServer(
+            {
+              input: inputPath,
+              ignoreHeader: ignoreHeader,
+            },
+            {},
+            fileExtension === '.json' ? 'json' : 'yaml',
+            logger,
+          )
+
+          // Parse the generated template
+          if (fileExtension === '.json') {
+            template = JSON.parse(mcpTemplateContent) as McpTemplate
+          } else {
+            template = yaml.load(mcpTemplateContent) as McpTemplate
+          }
+
+          logger.info(
+            'OpenAPI specification successfully converted to MCP template',
+          )
+        } finally {
+          // Clean up temporary file
+          if (tempFilePath) {
+            try {
+              await fs.unlink(tempFilePath)
+              await fs.rmdir(path.dirname(tempFilePath))
+              logger.info(`Cleaned up temporary file: ${tempFilePath}`)
+            } catch (cleanupError) {
+              logger.warn(
+                `Failed to clean up temporary file: ${tempFilePath}`,
+                cleanupError,
+              )
+            }
+          }
+        }
       } catch (conversionError) {
         const msg =
           conversionError instanceof Error

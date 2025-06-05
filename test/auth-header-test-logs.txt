@@ -1,0 +1,119 @@
+[supergateway] Starting...
+
+[supergateway] @gfsopen/supergateway is supported by gflinwenjie@qq.com
+[supergateway]   - outputTransport: sse
+
+[supergateway] Initializing API->SSE gateway configuration:
+[supergateway] - API host: https://example.com/api
+[supergateway] - Config file: /Users/linwenjie/workspace/supergateway/openapi.json (supports OpenAPI and MCP template formats)
+
+[supergateway] - Server port: 9601
+[supergateway] - SSE path: /sse
+[supergateway] - Message path: /message
+
+[supergateway] Loading file: /Users/linwenjie/workspace/supergateway/openapi.json
+
+[supergateway] Detected OpenAPI specification, version: 3.0.1
+[supergateway] Converting OpenAPI specification to MCP template...
+
+[supergateway] OpenAPI specification successfully converted to MCP template
+
+[supergateway] MCP template loaded successfully: contains 3 tools
+
+[supergateway] Registering 3 tools:
+
+[supergateway] Registering tool: apiCode_7124 (9 parameters)
+
+[supergateway] Tool apiCode_7124 parameter schema: ["source","password","timeStamp","fields","conditions","pageindex","pagesize","orderFields","asc"]
+
+[supergateway] Registering tool: apiCode_7101 (9 parameters)
+[supergateway] Tool apiCode_7101 parameter schema: ["source","password","timeStamp","fields","conditions","pageindex","pagesize","orderFields","asc"]
+
+[supergateway] Registering tool: apiCode_7118 (9 parameters)
+[supergateway] Tool apiCode_7118 parameter schema: ["source","password","timeStamp","fields","conditions","pageindex","pagesize","orderFields","asc"]
+
+[supergateway] API->SSE Gateway started successfully:
+
+[supergateway] - Listening on port: 9601
+[supergateway] - SSE endpoint: http://localhost:9601/sse
+[supergateway] - Message endpoint: http://localhost:9601/message
+[supergateway] - Health endpoint: http://localhost:9601/health
+[supergateway] - Config endpoint: http://localhost:9601/mcp-config
+
+[supergateway] Starting...
+
+[supergateway] @gfsopen/supergateway is supported by gflinwenjie@qq.com
+[supergateway]   - outputTransport: streamable-http
+[supergateway]   - Headers: (none)
+[supergateway]   - port: 9600
+[supergateway]   - sseUrl: http://localhost:9601/sse
+[supergateway]   - httpPath: /mcp-test
+[supergateway]   - CORS: enabled (["undefined"])
+
+[supergateway]   - Health endpoints: (none)
+
+[supergateway] Intercepting fetch request to SSE server: http://localhost:9601/sse
+
+[supergateway] Final headers for SSE request: ["Accept"]
+
+[supergateway] New SSE connection from: ::1
+
+[supergateway] Server has 3 registered tools: apiCode_7124, apiCode_7101, apiCode_7118
+
+[supergateway] Set session headers for edb10bda-ef97-4ad4-83a0-491fc75109f0
+
+[supergateway] Saved client headers for session edb10bda-ef97-4ad4-83a0-491fc75109f0: ["host","connection","accept","accept-language","sec-fetch-mode","user-agent","pragma","cache-control","accept-encoding"]
+[supergateway] Connecting transport to MCP server...
+
+[supergateway] Transport connected to MCP server successfully
+[supergateway] SSE session established: edb10bda-ef97-4ad4-83a0-491fc75109f0
+[supergateway] Active sessions: 1
+
+[supergateway] Message request for session: edb10bda-ef97-4ad4-83a0-491fc75109f0
+
+[supergateway] Request headers: {"host":"localhost:9601","connection":"keep-alive","content-type":"application/json","accept":"*/*","accept-language":"*","sec-fetch-mode":"cors","user-agent":"node","accept-encoding":"gzip, deflate","content-length":"161"}
+[supergateway] Raw request body: {"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"supergateway","version":"3.0.9"}},"jsonrpc":"2.0","id":0}
+[supergateway] Handling message for session edb10bda-ef97-4ad4-83a0-491fc75109f0 using transport.handlePostMessage
+[supergateway] Using stored raw body: {"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"supergateway","version":"3.0.9"}},"jsonrpc":"2.0","id":0}
+[supergateway] Parsed request body: {"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"supergateway","version":"3.0.9"}},"jsonrpc":"2.0","id":0}
+[supergateway] Calling handlePostMessage with parsed body: {"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"supergateway","version":"3.0.9"}},"jsonrpc":"2.0","id":0}
+
+[supergateway] handlePostMessage completed successfully for session edb10bda-ef97-4ad4-83a0-491fc75109f0
+
+[supergateway] Message request for session: edb10bda-ef97-4ad4-83a0-491fc75109f0
+[supergateway] Request headers: {"host":"localhost:9601","connection":"keep-alive","content-type":"application/json","accept":"*/*","accept-language":"*","sec-fetch-mode":"cors","user-agent":"node","accept-encoding":"gzip, deflate","content-length":"54"}
+[supergateway] Raw request body: {"method":"notifications/initialized","jsonrpc":"2.0"}
+
+[supergateway] Handling message for session edb10bda-ef97-4ad4-83a0-491fc75109f0 using transport.handlePostMessage
+[supergateway] Using stored raw body: {"method":"notifications/initialized","jsonrpc":"2.0"}
+[supergateway] Parsed request body: {"method":"notifications/initialized","jsonrpc":"2.0"}
+[supergateway] Calling handlePostMessage with parsed body: {"method":"notifications/initialized","jsonrpc":"2.0"}
+
+[supergateway] handlePostMessage completed successfully for session edb10bda-ef97-4ad4-83a0-491fc75109f0
+
+[supergateway] Connected to SSE server: http://localhost:9601/sse
+
+[supergateway] Listening on port 9600
+[supergateway] Streamable HTTP endpoint: http://localhost:9600/mcp-test
+
+[supergateway] [MCP] Final requestHeaders: {"accept":"*/*","authorization":"Bearer test-auth-token-12345","content-type":"application/json","user-agent":"node-fetch"}
+
+[supergateway] Handling request with session ID: 45751245-38e4-4012-a640-e47b60df89f7 from ::1
+
+[supergateway] Request headers: {"accept":"*/*","accept-encoding":"gzip, deflate, br","authorization":"Bearer test-auth-token-12345","content-length":"142","content-type":"application/json","user-agent":"node-fetch","host":"localhost:9600","connection":"keep-alive"}
+
+[supergateway] Request body: {"jsonrpc":"2.0","method":"tools/call","params":{"name":"debug","arguments":{"message":"Testing auth header passing","testMode":true}},"id":1}
+
+[supergateway] Saving client headers for session 45751245-38e4-4012-a640-e47b60df89f7: ["accept","authorization","content-type","user-agent"]
+
+Updated global auth headers for session 45751245-38e4-4012-a640-e47b60df89f7: ["authorization"]
+
+[supergateway] Auth headers detected in request, storing for future SSE requests
+[supergateway] Stored auth headers for session 45751245-38e4-4012-a640-e47b60df89f7: ["authorization"]
+[supergateway] Creating new session for 45751245-38e4-4012-a640-e47b60df89f7
+
+[supergateway] Created new session 45751245-38e4-4012-a640-e47b60df89f7, total active sessions: 1
+
+[supergateway] Server connected for session 45751245-38e4-4012-a640-e47b60df89f7
+
+[supergateway] Handling request for session 45751245-38e4-4012-a640-e47b60df89f7

@@ -34,6 +34,10 @@ const tests = [
     name: 'SSE → Streamable HTTP',
     script: join(__dirname, 'test-sse-to-streamable-http.js'),
   },
+  {
+    name: 'Remote API File Download',
+    script: join(__dirname, 'test-remote-api.js'),
+  },
 ]
 
 /**
