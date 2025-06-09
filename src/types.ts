@@ -27,3 +27,43 @@ export interface MCPService {
   }>
   executeToolCall(toolName: string, params: Record<string, any>): Promise<any>
 }
+
+export interface McpServerConfig {
+  // stdio模式配置
+  stdio?: string
+
+  // sse模式配置
+  sse?: string
+
+  // api模式配置
+  api?: string
+  apiHost?: string
+  ignoreHeader?: boolean
+
+  // 输出传输配置
+  outputTransport: 'sse' | 'ws' | 'streamable-http'
+  port?: number
+
+  // 路径配置
+  ssePath?: string
+  messagePath?: string
+  httpPath?: string
+
+  // 其他配置
+  baseUrl?: string
+  logLevel?: 'info' | 'none'
+  cors?: string[]
+  healthEndpoint?: string[]
+  header?: string[]
+  oauth2Bearer?: string
+}
+
+export interface McpServersConfig {
+  mcpServers: Record<string, McpServerConfig>
+}
+
+export interface MultiServerOptions {
+  configFile: string
+  port: number
+  logLevel: 'info' | 'none'
+}

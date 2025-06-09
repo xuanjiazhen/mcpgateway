@@ -32,11 +32,149 @@
 
 ## Installation & Usage
 
-Run McpGateway via `npx`:
+Run McpGateway via the unified `npx` command. The system automatically detects whether to run in single-server or multi-server mode based on your parameters:
 
 ```bash
+# Single server mode (auto-detected from parameters)
 npx -y @michlyn/mcpgateway --stdio "uvx mcp-server-git"
+npx -y @michlyn/mcpgateway --stdio "uvx mcp-server-git" --outputTransport streamable-http
+
+# Multi-server mode (auto-detected from parameters)
+npx -y @michlyn/mcpgateway --config mcp-servers.json
+npx -y @michlyn/mcpgateway mcp-servers.json
 ```
+
+### Automatic Mode Detection
+
+The unified `mcpgateway` command intelligently determines the appropriate mode:
+
+**Single Server Mode** - Detected when using:
+
+- `--stdio "command"` - Run MCP stdio server
+- `--sse "url"` - Connect to SSE server
+- `--api "spec.json" --apiHost "url"` - Convert OpenAPI to MCP
+- Other single-server specific parameters
+
+**Multi Server Mode** - Detected when using:
+
+- `--config config.json` - Multi-server configuration
+- `config.json` - Direct config file path
+- `--routerPort` - Router port specification
+
+### Multi-Server Mode
+
+Support running multiple MCP servers with **dynamic routing** through a single unified port. Features hot configuration reload and automatic server discovery.
+
+#### Dynamic Routing Features
+
+- ✅ **Single External Port**: Docker exposes only port 80
+- ✅ **Hot Configuration Reload**: Modify `mcp-servers.json` without restart
+- ✅ **Automatic Server Discovery**: Routes based on server names
+- ✅ **Health Monitoring**: Built-in health checks for all servers
+- ✅ **Simplified Architecture**: Direct routing without proxy layer
+
+#### Configuration File Format
+
+Create a `mcp-servers.json` configuration file:
+
+```json
+{
+  "mcpServers": {
+    "mcp-server-feedback": {
+      "api": "https://example.com/api/feedback.json",
+      "apiHost": "https://example.com/api",
+      "outputTransport": "streamable-http",
+      "port": 8000,
+      "httpPath": "/mcp",
+      "ignoreHeader": true
+    },
+    "server-filesystem": {
+      "stdio": "npx -y @modelcontextprotocol/server-filesystem /data",
+      "outputTransport": "sse",
+      "port": 8001,
+      "ssePath": "/sse",
+      "messagePath": "/message"
+    },
+    "comp-info-server": {
+      "api": "/data/openapi.json",
+      "apiHost": "https://example.com/api",
+      "outputTransport": "sse",
+      "port": 8002,
+      "ssePath": "/sse",
+      "messagePath": "/message"
+    }
+  }
+}
+```
+
+#### Start Multi-Server
+
+```bash
+# Dynamic multi-server with unified routing (Recommended)
+npx -y @michlyn/mcpgateway --config mcp-servers.json
+
+# 🆕 Remote configuration support
+npx -y @michlyn/mcpgateway --config https://api.example.com/mcp-servers.json
+```
+
+#### 🆕 Remote Configuration Support
+
+The configuration file now supports **remote URLs** with automatic monitoring for changes:
+
+**Features:**
+
+- 🌐 **HTTP/HTTPS URLs**: Load configuration from remote servers
+- 🔄 **Auto-monitoring**: Check for updates every 30 seconds
+- ⚡ **Cache Validation**: Support Last-Modified and ETag headers
+- 🚀 **Hot Reload**: Automatically reload routes when config changes
+- ⏱️ **Fast Response**: 1-second response time for configuration updates
+
+**Examples:**
+
+```bash
+# Use remote configuration
+npx -y @michlyn/mcpgateway --config https://api.example.com/mcp-servers.json --routerPort 80
+
+# Use local configuration
+npx -y @michlyn/mcpgateway --config ./mcp-servers.json --routerPort 80
+```
+
+#### Access Patterns
+
+**Dynamic Routing (Recommended):**
+
+- **Unified Entry**: `http://localhost:80/{server-name}/{path}`
+- **Server Status**: `http://localhost:80/servers`
+- **Health Check**: `http://localhost:80/health`
+
+**Examples:**
+
+- Feedback Server: `http://localhost:80/mcp-server-feedback/mcp`
+- Filesystem Server: `http://localhost:80/server-filesystem/sse`
+- Info Server: `http://localhost:80/comp-info-server/sse`
+
+#### Docker Deployment
+
+Deploy using the unified Docker configuration that supports both single and multi-server modes:
+
+```bash
+# Multi-server mode (auto-detected)
+docker run -it --rm -p 80:80 -v $(pwd)/mcp-servers.json:/app/mcp-servers.json \
+    michlyn/mcpgateway --config mcp-servers.json
+
+# Single server mode (auto-detected)
+docker run -it --rm -p 8000:8000 michlyn/mcpgateway \
+    --stdio "npx -y @modelcontextprotocol/server-filesystem /" --port 8000
+```
+
+**Unified Docker Features:**
+
+- **Intelligent Startup**: Automatically detects single vs multi-server mode
+- **Single Port**: External port 80 with internal dynamic routing
+- **Smart Health Checks**: Multi-port health monitoring
+- **Seamless Operation**: No mode keywords needed, just provide your parameters
+
+For detailed Docker usage instructions, see: [Docker Usage Guide](docs/DOCKER_USAGE.md)
 
 ### Common Options
 
@@ -350,6 +488,18 @@ docker run -it --rm -p 8000:8000 michlyn/mcpgateway \
     --outputTransport streamable-http --port 8000 --httpPath /mcp
 ```
 
+#### Multi-Server Mode
+
+```bash
+# Multi-server with config file
+docker run -it --rm -p 80:80 -v $(pwd)/mcp-servers.json:/app/mcp-servers.json \
+    michlyn/mcpgateway --config mcp-servers.json
+
+# Multi-server with remote config
+docker run -it --rm -p 80:80 michlyn/mcpgateway \
+    --config https://api.example.com/mcp-servers.json
+```
+
 ### Volume Mounting
 
 To provide files from your host system:
@@ -369,22 +519,27 @@ npm run build
 # 2. Build Docker image
 docker build -t mcpgateway .
 
-# 3. Run the container
+# 3. Run the container (single server)
 docker run -it --rm -p 8000:8000 mcpgateway \
     --stdio "npx -y @modelcontextprotocol/server-filesystem /" \
     --port 8000
+
+# 4. Run the container (multi-server)
+docker run -it --rm -p 80:80 -v $(pwd)/mcp-servers.json:/app/mcp-servers.json \
+    mcpgateway --config mcp-servers.json
 ```
 
 ## Public Access with ngrok
 
 Share your local MCP server publicly:
+
+```bash
+# Single server mode
 npx -y @michlyn/mcpgateway --port 8000 --stdio "npx -y @modelcontextprotocol/server-filesystem ."
 
 # In another terminal:
-
 ngrok http 8000
-
-````
+```
 
 The MCP server will be available at a URL similar to: https://1234-567-890-12-456.ngrok-free.app/sse
 
@@ -393,16 +548,17 @@ The MCP server will be available at a URL similar to: https://1234-567-890-12-45
 If you encounter issues with SSE connections or tool calls not being processed:
 
 1. **Check Session IDs**: Ensure the client is using the session ID returned by the server in the SSE response headers:
+
    ```javascript
    // Example JavaScript client code
-   const sseConnection = new EventSource('/sse');
-   let sessionId;
+   const sseConnection = new EventSource('/sse')
+   let sessionId
 
    sseConnection.onopen = (event) => {
      // Get session ID from response headers
-     sessionId = event.target.getResponseHeader('mcp-session-id');
-     console.log('Connected with session ID:', sessionId);
-   };
+     sessionId = event.target.getResponseHeader('mcp-session-id')
+     console.log('Connected with session ID:', sessionId)
+   }
 
    // Use that session ID for message requests
    async function callTool(toolName, parameters) {
@@ -410,17 +566,19 @@ If you encounter issues with SSE connections or tool calls not being processed:
        method: 'POST',
        headers: {
          'Content-Type': 'application/json',
-         'mcp-session-id': sessionId
+         'mcp-session-id': sessionId,
        },
        body: JSON.stringify({
          jsonrpc: '2.0',
          method: 'tools/call',
          params: { name: toolName, arguments: parameters },
-         id: Date.now()
-       })
-     });
-     return await response.json();
+         id: Date.now(),
+       }),
+     })
+     return await response.json()
    }
+   ```
+
 ````
 
 2. **Standard MCP tools/call Format**: Use the standard MCP tools/call message format:
@@ -438,9 +596,9 @@ If you encounter issues with SSE connections or tool calls not being processed:
      },
      "id": 1
    }
-   ```
+````
 
-   Note: The `arguments` field is used instead of `parameters`. This is required for compatibility with the standard MCP tools/call format and direct-intercept mode.
+Note: The `arguments` field is used instead of `parameters`. This is required for compatibility with the standard MCP tools/call format and direct-intercept mode.
 
 3. **Use the Debug Tool**: The server includes a built-in debug tool to test tool invocation:
 

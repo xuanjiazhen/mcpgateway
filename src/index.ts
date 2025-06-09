@@ -88,6 +88,7 @@ function parseCommand(cmdString: string): { command: string; args: string[] } {
 interface Args {
   stdio?: string
   sse?: string
+  config?: string
   outputTransport?: string
   port?: number
   baseUrl?: string
@@ -113,6 +114,10 @@ async function main() {
     sse: {
       type: String,
       description: 'SSE URL to connect to',
+    },
+    config: {
+      type: String,
+      description: 'Multi-server configuration file (JSON format)',
     },
     outputTransport: {
       type: String,
@@ -203,15 +208,18 @@ async function main() {
   const hasStdio = Boolean(args.stdio)
   const hasSse = Boolean(args.sse)
   const hasApi = Boolean(args.api)
+  const hasConfig = Boolean(args.config)
 
   // 检查输入参数
-  const inputCount = [hasStdio, hasSse, hasApi].filter(Boolean).length
+  const inputCount = [hasStdio, hasSse, hasApi, hasConfig].filter(
+    Boolean,
+  ).length
   if (inputCount > 1) {
-    logStderr('Error: 只能指定 --stdio、--sse 或 --api 中的一个参数')
+    logStderr('Error: 只能指定 --stdio、--sse、--api 或 --config 中的一个参数')
     process.exit(1)
   }
   if (inputCount === 0) {
-    logStderr('Error: 必须指定 --stdio、--sse 或 --api 参数之一')
+    logStderr('Error: 必须指定 --stdio、--sse、--api 或 --config 参数之一')
     process.exit(1)
   }
 
@@ -342,6 +350,10 @@ async function main() {
       } else {
         throw new Error('API 模式只支持 streamable-http 和 sse 输出传输方式')
       }
+    } else if (hasConfig) {
+      logStderr('Error: 多服务器配置模式请使用 multi-mcp-server 命令')
+      logStderr('用法: npx multi-mcp-server --config mcp-servers.json')
+      process.exit(1)
     } else {
       logStderr('Error: Invalid input transport')
       process.exit(1)

@@ -1,6 +1,6 @@
 {
   "name": "@michlyn/mcpgateway",
-  "version": "3.0.15",
+  "version": "4.0.0",
   "description": "Enhanced version of supercorp-ai/supergateway, adding streamable http support and the ability to run MCP services based on both OpenAPI protocol interface documentation and higress MCP template files.",
   "repository": {
     "type": "git",
@@ -18,7 +18,7 @@
   ],
   "type": "module",
   "bin": {
-    "mcpgateway": "dist/index.js",
+    "mcpgateway": "dist/cmd/mcpgateway.js",
     "openapi-to-mcp": "dist/cmd/openapi-to-mcp.js"
   },
   "scripts": {
@@ -36,6 +36,7 @@
     "test:ignore-header": "node test/test-ignore-header.js",
     "test:remote-api": "node test/test-remote-api.js",
     "test:all": "node test/run-all-tests.js",
+    "test:multi-server": "node test/test-multi-server.js",
     "openapi-to-mcp": "node dist/cmd/openapi-to-mcp.js",
     "pub": "npm run build && npm config set registry https://registry.npmjs.org/ && npm publish --access public",
     "test:auth-headers-pass": "node test/test-auth-headers-pass.js"
@@ -45,11 +46,13 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
+    "@types/http-proxy-middleware": "^0.19.3",
     "axios": "^1.9.0",
     "body-parser": "^1.20.3",
     "cors": "^2.8.5",
     "eventsource": "^3.0.6",
     "express": "^4.21.2",
+    "http-proxy-middleware": "^3.0.5",
     "js-yaml": "^4.1.0",
     "node-fetch": "^3.3.2",
     "uuid": "^11.1.0",
