@@ -27,9 +27,8 @@ interface Args {
   oauth2Bearer?: string
 }
 
-const log = (...args: any[]) => console.log('[DynamicMultiMcpServer]', ...args)
-const logStderr = (...args: any[]) =>
-  console.error('[DynamicMultiMcpServer]', ...args)
+const log = (...args: any[]) => console.log('[mcpgateway]', ...args)
+const logStderr = (...args: any[]) => console.error('[mcpgateway]', ...args)
 
 const noneLogger: Logger = {
   info: () => {},

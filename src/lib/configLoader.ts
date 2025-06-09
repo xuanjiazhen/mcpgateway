@@ -327,9 +327,24 @@ function checkPortConflicts(servers: Record<string, McpServerConfig>): void {
 /**
  * 获取服务器配置的默认值
  */
+// 创建一个专门的类型用于返回值，确保header总是数组
+type ResolvedMcpServerConfig = Required<Omit<McpServerConfig, 'header'>> & {
+  header: string[]
+}
+
 export function getServerConfigDefaults(
   config: McpServerConfig,
-): Required<McpServerConfig> {
+): ResolvedMcpServerConfig {
+  // 处理header字段，支持单个字符串或字符串数组
+  let headerArray: string[] = []
+  if (config.header) {
+    if (typeof config.header === 'string') {
+      headerArray = [config.header]
+    } else if (Array.isArray(config.header)) {
+      headerArray = config.header
+    }
+  }
+
   return {
     stdio: config.stdio || '',
     sse: config.sse || '',
@@ -345,7 +360,7 @@ export function getServerConfigDefaults(
     logLevel: config.logLevel || 'info',
     cors: config.cors || [],
     healthEndpoint: config.healthEndpoint || [],
-    header: config.header || [],
+    header: headerArray,
     oauth2Bearer: config.oauth2Bearer || '',
   }
 }
