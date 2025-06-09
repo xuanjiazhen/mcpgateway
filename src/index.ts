@@ -35,6 +35,7 @@ import { corsOrigin } from './lib/corsOrigin.js'
 import { apiToStreamableHttp } from './gateways/apiToStreamableHttp.js'
 import { apiToSse } from './gateways/apiToSse.js'
 import { parseArgs } from './lib/parseArgs.js'
+import { DynamicRouter } from './server/dynamicRouter.js'
 
 const log = (...args: any[]) => console.log('[mcpgateway]', ...args)
 const logStderr = (...args: any[]) => console.error('[mcpgateway]', ...args)
@@ -246,6 +247,7 @@ async function main() {
 
   try {
     if (hasStdio) {
+      logger.info('🚀 Starting McpGateway in single-server mode...')
       if (args.outputTransport === 'sse') {
         await stdioToSse({
           stdioCmd: args.stdio!,
@@ -289,6 +291,7 @@ async function main() {
         process.exit(1)
       }
     } else if (hasSse) {
+      logger.info('🚀 Starting McpGateway in single-server mode...')
       if (args.outputTransport === 'stdio') {
         await sseToStdio({
           sseUrl: args.sse!,
@@ -316,6 +319,7 @@ async function main() {
         process.exit(1)
       }
     } else if (args.api) {
+      logger.info('🚀 Starting McpGateway in single-server mode...')
       if (args.outputTransport === 'streamable-http') {
         await apiToStreamableHttp({
           mcpTemplateFile: args.api,
@@ -351,9 +355,16 @@ async function main() {
         throw new Error('API 模式只支持 streamable-http 和 sse 输出传输方式')
       }
     } else if (hasConfig) {
-      logStderr('Error: 多服务器配置模式请使用 multi-mcp-server 命令')
-      logStderr('用法: npx multi-mcp-server --config mcp-servers.json')
-      process.exit(1)
+      // 启动动态路由器处理多服务器配置
+      logger.info('🚀 Starting McpGateway in multi-server mode...')
+      const router = new DynamicRouter({
+        configFile: args.config!,
+        port: args.port || 8080,
+        logLevel: (args.logLevel as 'info' | 'none') || 'info',
+        cors: argsWithDefaults.cors,
+        healthEndpoint: argsWithDefaults.healthEndpoint,
+      })
+      await router.start()
     } else {
       logStderr('Error: Invalid input transport')
       process.exit(1)

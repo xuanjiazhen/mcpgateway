@@ -40,6 +40,7 @@ export class DynamicRouter {
   private remoteWatcher: NodeJS.Timeout | null = null
   private remoteLastModified?: string
   private remoteEtag?: string
+  private remoteContentHash?: string
 
   constructor(options: DynamicRouterOptions) {
     this.options = options
@@ -451,6 +452,24 @@ export class DynamicRouter {
   private async loadServerRoutes(): Promise<void> {
     try {
       this.logger.info(`加载配置: ${this.configPath}`)
+
+      // 如果是远程配置，先获取缓存信息
+      if (
+        isUrl(this.configPath) &&
+        !this.remoteLastModified &&
+        !this.remoteEtag &&
+        !this.remoteContentHash
+      ) {
+        try {
+          const result = await checkRemoteConfigUpdate(this.configPath)
+          this.remoteLastModified = result.lastModified
+          this.remoteEtag = result.etag
+          this.remoteContentHash = result.contentHash
+        } catch (error) {
+          this.logger.warn('获取远程配置缓存信息失败:', error)
+        }
+      }
+
       const config = await loadMcpServersConfig(this.configPath)
 
       this.serverRoutes.clear()
@@ -518,12 +537,14 @@ export class DynamicRouter {
           this.configPath,
           this.remoteLastModified,
           this.remoteEtag,
+          this.remoteContentHash,
         )
 
         if (result.hasUpdate) {
           this.logger.info('检测到远程配置更新，重新加载路由...')
           this.remoteLastModified = result.lastModified
           this.remoteEtag = result.etag
+          this.remoteContentHash = result.contentHash
           await this.loadServerRoutes()
         }
       } catch (error) {
