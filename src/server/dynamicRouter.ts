@@ -254,8 +254,7 @@ export class DynamicRouter {
 
     // 复制原始请求头，但跳过一些特定的头
     const skipHeaders = [
-      'host',
-      'content-length',
+      'content-length', // 会重新计算
       'connection',
       'upgrade',
       'proxy-authorization',
@@ -270,8 +269,7 @@ export class DynamicRouter {
       }
     })
 
-    // 设置目标主机和内容长度
-    requestHeaders.host = url.host
+    // 设置内容长度（但保持原始host）
     if (body) {
       requestHeaders['content-length'] = Buffer.byteLength(body).toString()
       if (!requestHeaders['content-type']) {

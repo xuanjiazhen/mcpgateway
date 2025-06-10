@@ -54,7 +54,7 @@ export interface McpServerConfig {
   logLevel?: 'info' | 'none'
   cors?: string[]
   healthEndpoint?: string[]
-  header?: string | string[] // 支持单个字符串或字符串数组
+  header?: string[]
   oauth2Bearer?: string
 }
 
