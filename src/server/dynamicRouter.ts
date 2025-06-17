@@ -233,6 +233,8 @@ export class DynamicRouter {
     targetUrl: string,
     path: string,
   ): void {
+    // 生成请求ID用于调试
+    const requestId = Math.random().toString(36).substr(2, 9)
     const url = new URL(path, targetUrl)
 
     // 准备请求体（如果有的话）
@@ -255,6 +257,7 @@ export class DynamicRouter {
     // 复制原始请求头，但跳过一些特定的头
     const skipHeaders = [
       'content-length', // 会重新计算
+      'transfer-encoding', // 会重新计算，避免与content-length冲突
       'connection',
       'upgrade',
       'proxy-authorization',
@@ -286,18 +289,18 @@ export class DynamicRouter {
     }
 
     this.logger.debug(
-      `Proxying ${req.method} ${req.originalUrl} -> ${url.toString()}`,
+      `[${requestId}] Proxying ${req.method} ${req.originalUrl} -> ${url.toString()}`,
     )
     this.logger.debug(
-      `Request headers:`,
+      `[${requestId}] Request headers:`,
       JSON.stringify(requestHeaders, null, 2),
     )
 
     const proxyReq = http.request(options, (proxyRes) => {
       this.logger.debug(
-        `Target response: ${proxyRes.statusCode} ${proxyRes.statusMessage}`,
+        `[${requestId}] Target response: ${proxyRes.statusCode} ${proxyRes.statusMessage}`,
       )
-      this.logger.debug(`Target headers:`, proxyRes.headers)
+      this.logger.debug(`[${requestId}] Target headers:`, proxyRes.headers)
 
       // 设置响应状态码
       res.status(proxyRes.statusCode || 500)
@@ -315,6 +318,7 @@ export class DynamicRouter {
         proxyRes.headers['content-type']?.includes('text/event-stream')
 
       if (isSSE) {
+        this.logger.debug(`[${requestId}] Processing SSE response`)
         // 对于SSE响应，需要修改endpoint数据中的路径
         let buffer = ''
 
@@ -333,7 +337,7 @@ export class DynamicRouter {
               // 将 "/message?sessionId=xxx" 改为 "message?sessionId=xxx"
               modifiedLine = line.replace(/^data: \/message/, 'data: message')
               this.logger.debug(
-                `Modified SSE endpoint: ${line} -> ${modifiedLine}`,
+                `[${requestId}] Modified SSE endpoint: ${line} -> ${modifiedLine}`,
               )
             }
 
@@ -351,15 +355,16 @@ export class DynamicRouter {
                 'data: message',
               )
               this.logger.debug(
-                `Modified final SSE endpoint: ${buffer} -> ${modifiedBuffer}`,
+                `[${requestId}] Modified final SSE endpoint: ${buffer} -> ${modifiedBuffer}`,
               )
             }
             res.write(modifiedBuffer)
           }
           res.end()
-          this.logger.debug('Target response ended')
+          this.logger.debug(`[${requestId}] SSE response ended`)
         })
       } else {
+        this.logger.debug(`[${requestId}] Processing non-SSE response`)
         // 非SSE响应，直接流式传输，但增加错误处理
         let responseData = ''
 
@@ -370,14 +375,14 @@ export class DynamicRouter {
 
         proxyRes.on('end', () => {
           this.logger.debug(
-            `Response data: ${responseData.substring(0, 500)}...`,
+            `[${requestId}] Response data: ${responseData.substring(0, 500)}...`,
           )
           res.end()
-          this.logger.debug('Target response ended')
+          this.logger.debug(`[${requestId}] Target response ended`)
         })
 
         proxyRes.on('error', (error) => {
-          this.logger.error('Target response error:', error)
+          this.logger.error(`[${requestId}] Target response error:`, error)
           if (!res.headersSent) {
             res.status(502).json({
               error: 'Bad Gateway - Target Response Error',
@@ -391,7 +396,7 @@ export class DynamicRouter {
     })
 
     proxyReq.on('error', (error) => {
-      this.logger.error(`Proxy request error:`, error)
+      this.logger.error(`[${requestId}] Proxy request error:`, error)
       if (!res.headersSent) {
         res.status(502).json({
           error: 'Bad Gateway',
@@ -402,7 +407,7 @@ export class DynamicRouter {
     })
 
     proxyReq.on('timeout', () => {
-      this.logger.error('Proxy request timeout')
+      this.logger.error(`[${requestId}] Proxy request timeout`)
       if (!res.headersSent) {
         res.status(504).json({
           error: 'Gateway Timeout',
@@ -416,7 +421,7 @@ export class DynamicRouter {
 
     // 发送请求数据
     if (body) {
-      this.logger.debug(`Request body: ${body}`)
+      this.logger.debug(`[${requestId}] Request body: ${body}`)
       proxyReq.write(body)
     }
     proxyReq.end()

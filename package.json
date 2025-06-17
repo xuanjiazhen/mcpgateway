@@ -1,6 +1,6 @@
 {
   "name": "@michlyn/mcpgateway",
-  "version": "4.0.0",
+  "version": "4.0.4",
   "description": "Enhanced version of supercorp-ai/supergateway, adding streamable http support and the ability to run MCP services based on both OpenAPI protocol interface documentation and higress MCP template files.",
   "repository": {
     "type": "git",

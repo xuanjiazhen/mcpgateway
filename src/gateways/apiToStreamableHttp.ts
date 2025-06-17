@@ -765,17 +765,36 @@ async function handleMcpRequest(
     await server.connect(transport)
     logger.info('Server and transport connected successfully')
 
+    // Set up resource cleanup before handling the request
+    const cleanup = () => {
+      try {
+        transport.close()
+        server.close()
+        logger.info('Connection closed, resources cleaned up')
+      } catch (cleanupError) {
+        logger.error('Error during cleanup:', cleanupError)
+      }
+    }
+
+    // Clean up resources when connection closes or finishes
+    res.on('close', cleanup)
+    res.on('finish', cleanup)
+
     // Handle request
     await transport.handleRequest(req, res, req.body)
 
-    // Clean up resources when connection closes
-    res.on('close', () => {
-      transport.close()
-      server.close()
-      logger.info('Connection closed, resources cleaned up')
-    })
+    logger.info('Request handled successfully')
   } catch (error) {
     logger.error('Error handling MCP request:', error)
+
+    // Ensure cleanup happens even on error
+    try {
+      transport.close()
+      server.close()
+    } catch (cleanupError) {
+      logger.error('Error during error cleanup:', cleanupError)
+    }
+
     if (!res.headersSent) {
       res.status(500).json({
         jsonrpc: '2.0',
@@ -878,7 +897,7 @@ export const apiToStreamableHttp = async (args: ApiToStreamableHttpArgs) => {
       res,
       mcpTemplate.tools,
       args.apiHost,
-      args.headers,
+      args.headers || {},
       logger,
     )
   })
