@@ -4,6 +4,9 @@ import https from 'https'
 import http from 'http'
 import crypto from 'crypto'
 import { McpServersConfig, McpServerConfig } from '../types.js'
+import { createTimestampedLog } from '../logger.js'
+
+const log = createTimestampedLog('[ConfigLoader]')
 
 // 检查是否为URL
 function isUrl(str: string): boolean {
@@ -57,12 +60,10 @@ export async function loadMcpServersConfig(
     let configContent: string
 
     if (isUrl(configPath)) {
-      console.log(`[ConfigLoader] 从远程URL加载配置: ${configPath}`)
+      log(`从远程URL加载配置: ${configPath}`)
       const result = await downloadConfigFromUrl(configPath)
       configContent = result.content
-      console.log(
-        `[ConfigLoader] 远程配置加载成功，大小: ${configContent.length} 字节`,
-      )
+      log(`远程配置加载成功，大小: ${configContent.length} 字节`)
     } else {
       const absolutePath = path.resolve(configPath)
 
@@ -71,7 +72,7 @@ export async function loadMcpServersConfig(
       }
 
       configContent = fs.readFileSync(absolutePath, 'utf-8')
-      console.log(`[ConfigLoader] 本地配置加载成功: ${absolutePath}`)
+      log(`本地配置加载成功: ${absolutePath}`)
     }
 
     const config = JSON.parse(configContent) as McpServersConfig
@@ -145,12 +146,12 @@ export async function checkRemoteConfigUpdate(
 
             // 只有在需要更新时才打印详细信息
             if (hasUpdate) {
-              console.log(`[ConfigLoader] 检测到配置更新:`)
-              console.log(`  URL: ${url}`)
-              console.log(`  检查方式: 内容哈希比较`)
-              console.log(`  缓存的内容哈希: ${lastContentHash || '(无)'}`)
-              console.log(`  服务器内容哈希: ${newContentHash}`)
-              console.log(`  更新原因: ${reason}`)
+              log(`检测到配置更新:`)
+              log(`  URL: ${url}`)
+              log(`  检查方式: 内容哈希比较`)
+              log(`  缓存的内容哈希: ${lastContentHash || '(无)'}`)
+              log(`  服务器内容哈希: ${newContentHash}`)
+              log(`  更新原因: ${reason}`)
             }
 
             resolve({
@@ -202,14 +203,14 @@ export async function checkRemoteConfigUpdate(
 
         // 只有在需要更新时才打印详细信息
         if (hasUpdate) {
-          console.log(`[ConfigLoader] 检测到配置更新:`)
-          console.log(`  URL: ${url}`)
-          console.log(`  检查方式: 头部比较`)
-          console.log(`  缓存的 Last-Modified: ${lastModified || '(无)'}`)
-          console.log(`  服务器 Last-Modified: ${newLastModified || '(无)'}`)
-          console.log(`  缓存的 ETag: ${etag || '(无)'}`)
-          console.log(`  服务器 ETag: ${newEtag || '(无)'}`)
-          console.log(`  更新原因: ${reason}`)
+          log(`检测到配置更新:`)
+          log(`  URL: ${url}`)
+          log(`  检查方式: 头部比较`)
+          log(`  缓存的 Last-Modified: ${lastModified || '(无)'}`)
+          log(`  服务器 Last-Modified: ${newLastModified || '(无)'}`)
+          log(`  缓存的 ETag: ${etag || '(无)'}`)
+          log(`  服务器 ETag: ${newEtag || '(无)'}`)
+          log(`  更新原因: ${reason}`)
         }
 
         resolve({

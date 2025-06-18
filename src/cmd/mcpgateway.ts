@@ -3,10 +3,14 @@
 import { spawn } from 'child_process'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { createTimestampedLog, createTimestampedErrorLog } from '../logger.js'
 
 // ES模块中获取__dirname
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+
+const log = createTimestampedLog('[mcpgateway]')
+const logError = createTimestampedErrorLog('[mcpgateway]')
 
 // 检测是否为多服务器模式的参数
 function isMultiServerMode(args: string[]): boolean {
@@ -120,9 +124,9 @@ For more information, visit: https://github.com/michlyn/mcpgateway
       const { readFileSync } = fs
       const packagePath = path.resolve(__dirname, '../../package.json')
       const pkg = JSON.parse(readFileSync(packagePath, 'utf8'))
-      console.log(pkg.version)
+      log(pkg.version)
     } catch (error) {
-      console.log('3.0.15') // fallback version
+      log('3.0.15') // fallback version
     }
     process.exit(0)
   }
@@ -144,21 +148,21 @@ For more information, visit: https://github.com/michlyn/mcpgateway
     mode = 'single-server'
   } else if (isMultiMode && isSingleMode) {
     // 参数冲突，优先多服务器模式
-    console.log(
+    log(
       '🔄 Detected both single and multi-server parameters, defaulting to multi-server mode',
     )
     targetScript = resolve(__dirname, 'dynamicMultiMcpServer.js')
     mode = 'multi-server'
   } else {
     // 无法确定模式，默认多服务器
-    console.log(
+    log(
       '🔄 Unable to determine mode from parameters, defaulting to multi-server mode',
     )
     targetScript = resolve(__dirname, 'dynamicMultiMcpServer.js')
     mode = 'multi-server'
   }
 
-  console.log(`🚀 Starting McpGateway in ${mode} mode...`)
+  log(`🚀 Starting McpGateway in ${mode} mode...`)
 
   // 启动对应的脚本
   const child = spawn('node', [targetScript, ...args], {
@@ -171,19 +175,19 @@ For more information, visit: https://github.com/michlyn/mcpgateway
   })
 
   child.on('error', (error) => {
-    console.error('Failed to start McpGateway:', error)
+    logError('Failed to start McpGateway:', error)
     process.exit(1)
   })
 }
 
 // 处理信号
 process.on('SIGINT', () => {
-  console.log('\n👋 McpGateway shutting down...')
+  log('\n👋 McpGateway shutting down...')
   process.exit(0)
 })
 
 process.on('SIGTERM', () => {
-  console.log('\n👋 McpGateway shutting down...')
+  log('\n👋 McpGateway shutting down...')
   process.exit(0)
 })
 

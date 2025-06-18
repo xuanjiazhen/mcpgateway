@@ -12,12 +12,9 @@ import {
 import { Logger } from '../types.js'
 
 // Simple console logger
-const logger: Logger = {
-  info: (...args) => console.log('[INFO]', ...args),
-  error: (...args) => console.error('[ERROR]', ...args),
-  warn: (...args) => console.warn('[WARN]', ...args),
-  debug: (...args) => console.debug('[DEBUG]', ...args),
-}
+import { createPrefixedLogger } from '../logger.js'
+
+const logger: Logger = createPrefixedLogger('[OpenAPI-to-MCP]')
 
 async function main() {
   const argv = await yargs(hideBin(process.argv))

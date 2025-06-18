@@ -10,6 +10,7 @@ import {
   checkRemoteConfigUpdate,
   isUrl,
 } from '../lib/configLoader.js'
+import { createPrefixedLogger } from '../logger.js'
 
 export interface DynamicRouterOptions {
   configFile: string
@@ -60,12 +61,7 @@ export class DynamicRouter {
       }
     }
 
-    return {
-      info: (...args: any[]) => console.log('[DynamicRouter]', ...args),
-      error: (...args: any[]) => console.error('[DynamicRouter]', ...args),
-      warn: (...args: any[]) => console.warn('[DynamicRouter]', ...args),
-      debug: (...args: any[]) => console.log('[DynamicRouter]', ...args),
-    }
+    return createPrefixedLogger('[DynamicRouter]')
   }
 
   private setupMiddleware(): void {

@@ -36,9 +36,10 @@ import { apiToStreamableHttp } from './gateways/apiToStreamableHttp.js'
 import { apiToSse } from './gateways/apiToSse.js'
 import { parseArgs } from './lib/parseArgs.js'
 import { DynamicRouter } from './server/dynamicRouter.js'
+import { createTimestampedLog, createTimestampedErrorLog } from './logger.js'
 
-const log = (...args: any[]) => console.log('[mcpgateway]', ...args)
-const logStderr = (...args: any[]) => console.error('[mcpgateway]', ...args)
+const log = createTimestampedLog('[mcpgateway]')
+const logStderr = createTimestampedErrorLog('[mcpgateway]')
 
 const noneLogger: Logger = {
   info: () => {},

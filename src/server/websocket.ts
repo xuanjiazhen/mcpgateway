@@ -6,6 +6,7 @@ import { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import { v4 as uuidv4 } from 'uuid'
 import { WebSocket, WebSocketServer } from 'ws'
 import { Server } from 'http'
+import { createTimestampedLog } from '../logger.js'
 
 // 自定义选项接口，兼容我们当前的实现
 interface CustomSendOptions extends TransportSendOptions {
@@ -15,6 +16,7 @@ interface CustomSendOptions extends TransportSendOptions {
 export class WebSocketServerTransport implements Transport {
   private wss!: WebSocketServer
   private clients: Map<string, WebSocket> = new Map()
+  private log = createTimestampedLog('[WebSocket]')
 
   onclose?: () => void
   onerror?: (err: Error) => void
@@ -27,7 +29,7 @@ export class WebSocketServerTransport implements Transport {
       ? (msg, clientId) => {
           // @ts-ignore
           if (msg.id === undefined) {
-            console.log('Broadcast message:', msg)
+            this.log('Broadcast message:', msg)
             return handler(msg)
           }
           // @ts-ignore

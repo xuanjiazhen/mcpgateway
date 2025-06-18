@@ -325,435 +325,13 @@ async function handleMcpRequest(
   apiHost: string,
   headers: Record<string, string> = {},
   logger: Logger,
+  mcpServer: McpServer,
 ) {
-  // Create MCP server
   logger.info(`[MCP] Incoming client headers: ${JSON.stringify(req.headers)}`)
-  const server = new McpServer({
-    name: 'API Gateway',
-    version: getVersion(),
-  })
+  logger.info(`Handling MCP request: ${req.method} ${req.path}`)
 
-  logger.info(
-    `Created MCP server instance, handling request: ${req.method} ${req.path}`,
-  )
-
-  // Register tools/call handler
-  server.tool(
-    'apiCallHandler',
-    'Handle API calls',
-    {
-      name: z.string().describe('API tool name'),
-      arguments: z.record(z.any()).optional().describe('API call parameters'),
-    },
-    async (toolParams) => {
-      const { name, arguments: args = {} } = toolParams
-
-      // Find tool
-      const tool = tools.find((t) => t.name === name)
-      if (!tool) {
-        throw new Error(`Tool not found: ${name}`)
-      }
-
-      // Process path parameters
-      const pathParams: Record<string, string> = {}
-      const queryParams: Record<string, any> = {}
-      const bodyParams: Record<string, any> = {}
-      const headerParams: Record<string, string> = {}
-
-      for (const arg of tool.args) {
-        const value = args[arg.name]
-        if (value !== undefined) {
-          switch (arg.position) {
-            case 'path':
-              pathParams[arg.name] = String(value)
-              break
-            case 'query':
-              queryParams[arg.name] = value
-              break
-            case 'body':
-              bodyParams[arg.name] = value
-              break
-            case 'header':
-              headerParams[arg.name] = String(value)
-              break
-          }
-        } else if (arg.required) {
-          throw new Error(`Required parameter ${arg.name} is missing`)
-        }
-      }
-
-      logger.info(
-        `[MCP] headerParams for tool '${tool.name}': ${JSON.stringify(headerParams)}`,
-      )
-
-      // Process path parameters
-      let url = tool.requestTemplate.url
-      for (const [paramName, paramValue] of Object.entries(pathParams)) {
-        url = url.replace(
-          `{${paramName}}`,
-          encodeURIComponent(String(paramValue)),
-        )
-      }
-
-      // Complete URL - check if URL is already a complete URL
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        // Ensure apiHost doesn't end with slash and url starts with slash
-        const baseUrl = apiHost.endsWith('/') ? apiHost.slice(0, -1) : apiHost
-        const pathUrl = url.startsWith('/') ? url : `/${url}`
-        url = `${baseUrl}${pathUrl}`
-      } else {
-        logger.info(`Using complete URL: ${url}`)
-      }
-
-      // Add query parameters
-      if (Object.keys(queryParams).length > 0) {
-        const queryParts: string[] = []
-        for (const [key, value] of Object.entries(queryParams)) {
-          if (value !== undefined) {
-            queryParts.push(
-              `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`,
-            )
-          }
-        }
-        if (queryParts.length > 0) {
-          url += `?${queryParts.join('&')}`
-        }
-      }
-
-      logger.info(`Calling API: ${tool.requestTemplate.method} ${url}`)
-
-      // 合并 header 时，优先用客户端 header，其次 gateway header，最后 tool header
-      const lowerCaseHeaders = (obj: Record<string, any>) =>
-        Object.fromEntries(
-          Object.entries(obj).map(([k, v]) => [k.toLowerCase(), v]),
-        )
-
-      const mergedHeaders = {
-        ...lowerCaseHeaders(headerParams), // tool header（大写，先转小写）
-        ...lowerCaseHeaders(headers), // gateway header
-        ...lowerCaseHeaders(req.headers), // 客户端 header，优先级最高
-      }
-
-      const requestHeaders: Record<string, string | string[]> = {}
-      for (const [key, value] of Object.entries(mergedHeaders)) {
-        if (
-          ['host', 'connection', 'content-length', 'accept-encoding'].includes(
-            key,
-          )
-        )
-          continue
-        if (Array.isArray(value)) {
-          requestHeaders[key] = value.map(String)
-        } else if (value !== undefined && value !== null) {
-          requestHeaders[key] = String(value)
-        }
-      }
-
-      // Add Content-Type header
-      if (
-        ['POST', 'PUT', 'PATCH'].includes(tool.requestTemplate.method) &&
-        Object.keys(bodyParams).length > 0
-      ) {
-        requestHeaders['Content-Type'] = 'application/json'
-      }
-
-      // Add headers defined in the tool
-      if (tool.requestTemplate.headers) {
-        for (const header of tool.requestTemplate.headers) {
-          requestHeaders[header.key] = header.value
-        }
-      }
-
-      // Request body
-      const body =
-        Object.keys(bodyParams).length > 0
-          ? JSON.stringify(bodyParams)
-          : undefined
-
-      // Send API request
-      try {
-        logger.info(
-          `[MCP] Final requestHeaders: ${JSON.stringify(requestHeaders)}`,
-        )
-        const response = await fetch(url, {
-          method: tool.requestTemplate.method,
-          headers: requestHeaders as any,
-          body,
-        })
-
-        // Handle response
-        const contentType = response.headers.get('content-type') || ''
-        let result: any
-
-        if (contentType.includes('application/json')) {
-          result = await response.json()
-          logger.info(
-            `API response status: ${response.status}, content type: application/json`,
-          )
-        } else {
-          result = await response.text()
-          logger.info(
-            `API response status: ${response.status}, content type: ${contentType}`,
-          )
-        }
-
-        // Build response content
-        let resultText = ''
-
-        // Add response prefix
-        if (tool.responseTemplate?.prependBody) {
-          resultText += tool.responseTemplate.prependBody
-        }
-
-        // Add original response
-        resultText +=
-          typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: resultText,
-            },
-          ],
-        }
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        logger.error(`API call failed:`, error)
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${msg}`,
-            },
-          ],
-        }
-      }
-    },
-  )
-
-  // Register MCP tools
-  for (const tool of tools) {
-    logger.info(`Registering MCP tool: ${tool.name}`)
-
-    // Create tool parameter schema
-    const paramSchema: Record<string, any> = {}
-
-    // Create corresponding schema for each tool parameter
-    for (const arg of tool.args) {
-      let schema
-
-      switch (arg.type) {
-        case 'integer':
-          schema = arg.required ? z.number().int() : z.number().int().optional()
-          break
-        case 'boolean':
-          schema = arg.required ? z.boolean() : z.boolean().optional()
-          break
-        case 'array':
-          schema = arg.required ? z.array(z.any()) : z.array(z.any()).optional()
-          break
-        case 'object':
-          schema = arg.required
-            ? z.record(z.any())
-            : z.record(z.any()).optional()
-          break
-        default: // string
-          schema = arg.required ? z.string() : z.string().optional()
-      }
-
-      paramSchema[arg.name] = schema.describe(arg.description || arg.name)
-    }
-
-    // Register tool
-    server.tool(tool.name, tool.description, paramSchema, async (params) => {
-      try {
-        // Categorize parameters
-        const pathParams: Record<string, string> = {}
-        const queryParams: Record<string, any> = {}
-        const bodyParams: Record<string, any> = {}
-        const headerParams: Record<string, string> = {}
-
-        for (const arg of tool.args) {
-          const value = params[arg.name]
-          if (value !== undefined) {
-            switch (arg.position) {
-              case 'path':
-                pathParams[arg.name] = String(value)
-                break
-              case 'query':
-                queryParams[arg.name] = value
-                break
-              case 'body':
-                bodyParams[arg.name] = value
-                break
-              case 'header':
-                headerParams[arg.name] = String(value)
-                break
-            }
-          } else if (arg.required) {
-            return {
-              content: [
-                {
-                  type: 'text' as const,
-                  text: `Error: Required parameter ${arg.name} is missing`,
-                },
-              ],
-            }
-          }
-        }
-
-        logger.info(
-          `[MCP] headerParams for tool '${tool.name}': ${JSON.stringify(headerParams)}`,
-        )
-
-        // Process path parameters
-        let url = tool.requestTemplate.url
-        for (const [paramName, paramValue] of Object.entries(pathParams)) {
-          url = url.replace(
-            `{${paramName}}`,
-            encodeURIComponent(String(paramValue)),
-          )
-        }
-
-        // Complete URL - check if URL is already a complete URL
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
-          // Ensure apiHost doesn't end with slash and url starts with slash
-          const baseUrl = apiHost.endsWith('/') ? apiHost.slice(0, -1) : apiHost
-          const pathUrl = url.startsWith('/') ? url : `/${url}`
-          url = `${baseUrl}${pathUrl}`
-        } else {
-          logger.info(`Using complete URL: ${url}`)
-        }
-
-        // Add query parameters
-        if (Object.keys(queryParams).length > 0) {
-          const queryParts: string[] = []
-          for (const [key, value] of Object.entries(queryParams)) {
-            if (value !== undefined) {
-              queryParts.push(
-                `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`,
-              )
-            }
-          }
-          if (queryParts.length > 0) {
-            url += `?${queryParts.join('&')}`
-          }
-        }
-
-        logger.info(`Calling API: ${tool.requestTemplate.method} ${url}`)
-
-        // 合并 header 时，优先用客户端 header，其次 gateway header，最后 tool header
-        const lowerCaseHeaders = (obj: Record<string, any>) =>
-          Object.fromEntries(
-            Object.entries(obj).map(([k, v]) => [k.toLowerCase(), v]),
-          )
-
-        const mergedHeaders = {
-          ...lowerCaseHeaders(headerParams), // tool header（大写，先转小写）
-          ...lowerCaseHeaders(headers), // gateway header
-          ...lowerCaseHeaders(req.headers), // 客户端 header，优先级最高
-        }
-
-        const requestHeaders: Record<string, string | string[]> = {}
-        for (const [key, value] of Object.entries(mergedHeaders)) {
-          if (
-            [
-              'host',
-              'connection',
-              'content-length',
-              'accept-encoding',
-            ].includes(key)
-          )
-            continue
-          if (Array.isArray(value)) {
-            requestHeaders[key] = value.map(String)
-          } else if (value !== undefined && value !== null) {
-            requestHeaders[key] = String(value)
-          }
-        }
-
-        // Add Content-Type header
-        if (
-          ['POST', 'PUT', 'PATCH'].includes(tool.requestTemplate.method) &&
-          Object.keys(bodyParams).length > 0
-        ) {
-          requestHeaders['Content-Type'] = 'application/json'
-        }
-
-        // Add headers defined in the tool
-        if (tool.requestTemplate.headers) {
-          for (const header of tool.requestTemplate.headers) {
-            requestHeaders[header.key] = header.value
-          }
-        }
-
-        // Request body
-        const body =
-          Object.keys(bodyParams).length > 0
-            ? JSON.stringify(bodyParams)
-            : undefined
-
-        // Send API request
-        logger.info(
-          `[MCP] Final requestHeaders: ${JSON.stringify(requestHeaders)}`,
-        )
-        const response = await fetch(url, {
-          method: tool.requestTemplate.method,
-          headers: requestHeaders as any,
-          body,
-        })
-
-        // Handle response
-        const contentType = response.headers.get('content-type') || ''
-        let result: any
-
-        if (contentType.includes('application/json')) {
-          result = await response.json()
-          logger.info(
-            `API response status: ${response.status}, content type: application/json`,
-          )
-        } else {
-          result = await response.text()
-          logger.info(
-            `API response status: ${response.status}, content type: ${contentType}`,
-          )
-        }
-
-        // Build response content
-        let resultText = ''
-
-        // Add response prefix
-        if (tool.responseTemplate?.prependBody) {
-          resultText += tool.responseTemplate.prependBody
-        }
-
-        // Add original response
-        resultText +=
-          typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: resultText,
-            },
-          ],
-        }
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        logger.error(`Tool call error (${tool.name}):`, error)
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `Error: ${msg}`,
-            },
-          ],
-        }
-      }
-    })
-  }
+  // Tools are already pre-registered on the shared server
+  logger.info(`Using pre-registered tools from shared MCP server`)
 
   // Create transport instance for the request
   const transport = new StreamableHTTPServerTransport({
@@ -762,14 +340,14 @@ async function handleMcpRequest(
 
   try {
     // Connect server and transport
-    await server.connect(transport)
+    await mcpServer.connect(transport)
     logger.info('Server and transport connected successfully')
 
     // Set up resource cleanup before handling the request
     const cleanup = () => {
       try {
         transport.close()
-        server.close()
+        // Note: Don't close the shared mcpServer instance
         logger.info('Connection closed, resources cleaned up')
       } catch (cleanupError) {
         logger.error('Error during cleanup:', cleanupError)
@@ -790,7 +368,7 @@ async function handleMcpRequest(
     // Ensure cleanup happens even on error
     try {
       transport.close()
-      server.close()
+      // Note: Don't close the shared mcpServer instance
     } catch (cleanupError) {
       logger.error('Error during error cleanup:', cleanupError)
     }
@@ -885,6 +463,243 @@ export const apiToStreamableHttp = async (args: ApiToStreamableHttpArgs) => {
     args.ignoreHeader,
   )
 
+  // Create shared MCP server instance
+  const sharedMcpServer = new McpServer({
+    name: 'API Gateway',
+    version: getVersion(),
+  })
+
+  // Pre-register tools to avoid registration conflicts
+  for (const tool of mcpTemplate.tools) {
+    logger.info(`Pre-registering MCP tool: ${tool.name}`)
+
+    // Create tool parameter schema
+    const paramSchema: Record<string, any> = {}
+
+    // Create corresponding schema for each tool parameter
+    for (const arg of tool.args) {
+      let schema
+
+      switch (arg.type) {
+        case 'integer':
+          schema = arg.required ? z.number().int() : z.number().int().optional()
+          break
+        case 'boolean':
+          schema = arg.required ? z.boolean() : z.boolean().optional()
+          break
+        case 'array':
+          schema = arg.required ? z.array(z.any()) : z.array(z.any()).optional()
+          break
+        case 'object':
+          schema = arg.required
+            ? z.record(z.any())
+            : z.record(z.any()).optional()
+          break
+        default: // string
+          schema = arg.required ? z.string() : z.string().optional()
+      }
+
+      paramSchema[arg.name] = schema.describe(arg.description || arg.name)
+    }
+
+    // Register tool on shared server
+    sharedMcpServer.tool(
+      tool.name,
+      tool.description,
+      paramSchema,
+      async (params) => {
+        try {
+          // Categorize parameters
+          const pathParams: Record<string, string> = {}
+          const queryParams: Record<string, any> = {}
+          const bodyParams: Record<string, any> = {}
+          const headerParams: Record<string, string> = {}
+
+          for (const arg of tool.args) {
+            const value = params[arg.name]
+            if (value !== undefined) {
+              switch (arg.position) {
+                case 'path':
+                  pathParams[arg.name] = String(value)
+                  break
+                case 'query':
+                  queryParams[arg.name] = value
+                  break
+                case 'body':
+                  bodyParams[arg.name] = value
+                  break
+                case 'header':
+                  headerParams[arg.name] = String(value)
+                  break
+              }
+            } else if (arg.required) {
+              return {
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: `Error: Required parameter ${arg.name} is missing`,
+                  },
+                ],
+              }
+            }
+          }
+
+          logger.info(
+            `[MCP] headerParams for tool '${tool.name}': ${JSON.stringify(headerParams)}`,
+          )
+
+          // Process path parameters
+          let url = tool.requestTemplate.url
+          for (const [paramName, paramValue] of Object.entries(pathParams)) {
+            url = url.replace(
+              `{${paramName}}`,
+              encodeURIComponent(String(paramValue)),
+            )
+          }
+
+          // Complete URL - check if URL is already a complete URL
+          if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            // Ensure apiHost doesn't end with slash and url starts with slash
+            const baseUrl = args.apiHost.endsWith('/')
+              ? args.apiHost.slice(0, -1)
+              : args.apiHost
+            const pathUrl = url.startsWith('/') ? url : `/${url}`
+            url = `${baseUrl}${pathUrl}`
+          } else {
+            logger.info(`Using complete URL: ${url}`)
+          }
+
+          // Add query parameters
+          if (Object.keys(queryParams).length > 0) {
+            const queryParts: string[] = []
+            for (const [key, value] of Object.entries(queryParams)) {
+              if (value !== undefined) {
+                queryParts.push(
+                  `${encodeURIComponent(String(key))}=${encodeURIComponent(String(value))}`,
+                )
+              }
+            }
+            if (queryParts.length > 0) {
+              url += `?${queryParts.join('&')}`
+            }
+          }
+
+          logger.info(`Calling API: ${tool.requestTemplate.method} ${url}`)
+
+          // Request headers merging logic
+          const lowerCaseHeaders = (obj: Record<string, any>) =>
+            Object.fromEntries(
+              Object.entries(obj).map(([k, v]) => [k.toLowerCase(), v]),
+            )
+
+          const mergedHeaders = {
+            ...lowerCaseHeaders(headerParams),
+            ...lowerCaseHeaders(args.headers || {}),
+          }
+
+          const requestHeaders: Record<string, string | string[]> = {}
+          for (const [key, value] of Object.entries(mergedHeaders)) {
+            if (
+              [
+                'host',
+                'connection',
+                'content-length',
+                'accept-encoding',
+              ].includes(key)
+            )
+              continue
+            if (Array.isArray(value)) {
+              requestHeaders[key] = value.map(String)
+            } else if (value !== undefined && value !== null) {
+              requestHeaders[key] = String(value)
+            }
+          }
+
+          // Add Content-Type header
+          if (
+            ['POST', 'PUT', 'PATCH'].includes(tool.requestTemplate.method) &&
+            Object.keys(bodyParams).length > 0
+          ) {
+            requestHeaders['Content-Type'] = 'application/json'
+          }
+
+          // Add headers defined in the tool
+          if (tool.requestTemplate.headers) {
+            for (const header of tool.requestTemplate.headers) {
+              requestHeaders[header.key] = header.value
+            }
+          }
+
+          // Request body
+          const body =
+            Object.keys(bodyParams).length > 0
+              ? JSON.stringify(bodyParams)
+              : undefined
+
+          // Send API request
+          logger.info(
+            `[MCP] Final requestHeaders: ${JSON.stringify(requestHeaders)}`,
+          )
+          const response = await fetch(url, {
+            method: tool.requestTemplate.method,
+            headers: requestHeaders as any,
+            body,
+          })
+
+          // Handle response
+          const contentType = response.headers.get('content-type') || ''
+          let result: any
+
+          if (contentType.includes('application/json')) {
+            result = await response.json()
+            logger.info(
+              `API response status: ${response.status}, content type: application/json`,
+            )
+          } else {
+            result = await response.text()
+            logger.info(
+              `API response status: ${response.status}, content type: ${contentType}`,
+            )
+          }
+
+          // Build response content
+          let resultText = ''
+
+          // Add response prefix
+          if (tool.responseTemplate?.prependBody) {
+            resultText += tool.responseTemplate.prependBody
+          }
+
+          // Add original response
+          resultText +=
+            typeof result === 'string'
+              ? result
+              : JSON.stringify(result, null, 2)
+
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: resultText,
+              },
+            ],
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          logger.error(`Tool call error (${tool.name}):`, error)
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `Error: ${msg}`,
+              },
+            ],
+          }
+        }
+      },
+    )
+  }
+
   // Create MCP config file endpoint (for debugging)
   app.get('/mcp-config', (req, res) => {
     res.status(200).json(mcpTemplate)
@@ -899,6 +714,7 @@ export const apiToStreamableHttp = async (args: ApiToStreamableHttpArgs) => {
       args.apiHost,
       args.headers || {},
       logger,
+      sharedMcpServer,
     )
   })
 

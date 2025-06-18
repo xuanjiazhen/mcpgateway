@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
 import { readFileSync } from 'fs'
+import { createTimestampedErrorLog } from '../logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -11,7 +12,8 @@ export function getVersion(): string {
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
     return packageJson.version || '1.0.0'
   } catch (err) {
-    console.error('[mcpgateway]', 'Unable to retrieve version:', err)
+    const logError = createTimestampedErrorLog('[mcpgateway]')
+    logError('Unable to retrieve version:', err)
     return 'unknown'
   }
 }

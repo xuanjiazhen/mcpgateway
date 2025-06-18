@@ -27,8 +27,10 @@ interface Args {
   oauth2Bearer?: string
 }
 
-const log = (...args: any[]) => console.log('[mcpgateway]', ...args)
-const logStderr = (...args: any[]) => console.error('[mcpgateway]', ...args)
+import { createTimestampedLog, createTimestampedErrorLog } from '../logger.js'
+
+const log = createTimestampedLog('[mcpgateway]')
+const logStderr = createTimestampedErrorLog('[mcpgateway]')
 
 const noneLogger: Logger = {
   info: () => {},
@@ -343,6 +345,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error)
+  logStderr('Fatal error:', error)
   process.exit(1)
 })
