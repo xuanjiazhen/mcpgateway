@@ -104,112 +104,66 @@ export async function checkRemoteConfigUpdate(
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https:') ? https : http
 
-    const req = client.request(url, { method: 'HEAD' }, (res) => {
+    // 直接使用GET请求替代HEAD请求，因为某些API不支持HEAD
+    const req = client.request(url, { method: 'GET' }, (res) => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`))
+        return
+      }
+
       const newLastModified = res.headers['last-modified'] as string
       const newEtag = res.headers['etag'] as string
 
-      // 检查是否需要内容哈希比较
-      const needContentCheck =
-        !etag &&
-        (!lastModified ||
-          !lastContentHash ||
-          (lastModified && !newLastModified) ||
-          (!lastModified && newLastModified))
+      let data = ''
+      res.on('data', (chunk) => (data += chunk))
+      res.on('end', () => {
+        // 计算内容哈希
+        const newContentHash = crypto
+          .createHash('sha256')
+          .update(data)
+          .digest('hex')
 
-      // 只在需要详细调试时打印，稍后根据结果决定是否显示
+        let hasUpdate = false
+        let reason = ''
 
-      let hasUpdate = false
-      let reason = ''
-      let newContentHash: string | undefined
-
-      if (needContentCheck) {
-        // 需要内容检查，重新发起GET请求
-        const getReq = client.request(url, { method: 'GET' }, (getRes) => {
-          let data = ''
-          getRes.on('data', (chunk) => (data += chunk))
-          getRes.on('end', () => {
-            newContentHash = crypto
-              .createHash('sha256')
-              .update(data)
-              .digest('hex')
-
-            if (lastContentHash && lastContentHash === newContentHash) {
-              hasUpdate = false
-              reason = '内容哈希匹配，无需更新'
-            } else if (!lastContentHash) {
-              hasUpdate = false // 首次获取内容哈希，不算更新
-              reason = '首次获取内容哈希，跳过更新'
-            } else {
-              hasUpdate = true
-              reason = `内容哈希不匹配: ${lastContentHash} != ${newContentHash}`
-            }
-
-            // 只有在需要更新时才打印详细信息
-            if (hasUpdate) {
-              log(`检测到配置更新:`)
-              log(`  URL: ${url}`)
-              log(`  检查方式: 内容哈希比较`)
-              log(`  缓存的内容哈希: ${lastContentHash || '(无)'}`)
-              log(`  服务器内容哈希: ${newContentHash}`)
-              log(`  更新原因: ${reason}`)
-            }
-
-            resolve({
-              hasUpdate,
-              lastModified: newLastModified,
-              etag: newEtag,
-              contentHash: newContentHash,
-            })
-          })
-        })
-
-        getReq.on('error', reject)
-        getReq.setTimeout(10000, () => {
-          getReq.destroy()
-          reject(new Error('内容检查超时'))
-        })
-        getReq.end()
-      } else {
-        // 使用头部信息比较
-        // 优先检查 ETag（更可靠）
-        if (etag && newEtag) {
+        // 检查是否有更新
+        if (lastContentHash) {
+          // 如果有之前的内容哈希，直接比较
+          hasUpdate = lastContentHash !== newContentHash
+          reason = hasUpdate
+            ? `内容哈希不匹配: ${lastContentHash} != ${newContentHash}`
+            : '内容哈希匹配，无需更新'
+        } else if (etag && newEtag) {
+          // 如果有ETag，比较ETag
           hasUpdate = etag !== newEtag
           reason = hasUpdate
             ? `ETag不匹配: ${etag} != ${newEtag}`
             : 'ETag匹配，无需更新'
         } else if (lastModified && newLastModified) {
-          // 如果没有ETag，检查 Last-Modified
+          // 如果有Last-Modified，比较Last-Modified
           const oldDate = new Date(lastModified)
           const newDate = new Date(newLastModified)
           hasUpdate = newDate > oldDate
           reason = hasUpdate
             ? `Last-Modified更新: ${lastModified} -> ${newLastModified}`
             : `Last-Modified未变更: ${lastModified}`
-        } else if (!lastModified && !etag) {
-          // 第一次检查，如果服务器支持缓存头部就不更新，否则切换到内容检查
-          if (newLastModified || newEtag) {
-            hasUpdate = false // 服务器支持缓存验证，首次不算更新
-            reason = '首次检查，服务器支持缓存验证，跳过更新'
-          } else {
-            hasUpdate = true // 将在下次切换到内容检查
-            reason =
-              '首次检查，服务器不支持缓存验证，执行更新并切换到内容检查模式'
-          }
         } else {
-          // 服务器缓存头部不一致，切换到内容哈希模式
-          hasUpdate = true
-          reason = '服务器缓存头部不一致，切换到内容哈希模式进行检查'
+          // 首次检查，不算更新
+          hasUpdate = false
+          reason = '首次检查，跳过更新'
         }
 
         // 只有在需要更新时才打印详细信息
         if (hasUpdate) {
           log(`检测到配置更新:`)
           log(`  URL: ${url}`)
-          log(`  检查方式: 头部比较`)
-          log(`  缓存的 Last-Modified: ${lastModified || '(无)'}`)
-          log(`  服务器 Last-Modified: ${newLastModified || '(无)'}`)
+          log(`  检查方式: 内容比较`)
+          log(`  缓存的内容哈希: ${lastContentHash || '(无)'}`)
+          log(`  服务器内容哈希: ${newContentHash}`)
           log(`  缓存的 ETag: ${etag || '(无)'}`)
           log(`  服务器 ETag: ${newEtag || '(无)'}`)
+          log(`  缓存的 Last-Modified: ${lastModified || '(无)'}`)
+          log(`  服务器 Last-Modified: ${newLastModified || '(无)'}`)
           log(`  更新原因: ${reason}`)
         }
 
@@ -219,7 +173,7 @@ export async function checkRemoteConfigUpdate(
           etag: newEtag,
           contentHash: newContentHash,
         })
-      }
+      })
     })
 
     req.on('error', reject)
