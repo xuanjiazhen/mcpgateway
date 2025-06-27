@@ -9,6 +9,8 @@ import {
   loadMcpServersConfig,
   checkRemoteConfigUpdate,
   isUrl,
+  checkPortConflicts,
+  getServerConfigDefaults,
 } from '../lib/configLoader.js'
 import { createPrefixedLogger } from '../logger.js'
 
@@ -449,48 +451,41 @@ export class DynamicRouter {
   }
 
   private async loadServerRoutes(): Promise<void> {
+    this.logger.info(`Loading configuration from ${this.configPath}...`)
+
     try {
-      this.logger.info(`加载配置: ${this.configPath}`)
-
-      // 如果是远程配置，先获取缓存信息
-      if (
-        isUrl(this.configPath) &&
-        !this.remoteLastModified &&
-        !this.remoteEtag &&
-        !this.remoteContentHash
-      ) {
-        try {
-          const result = await checkRemoteConfigUpdate(this.configPath)
-          this.remoteLastModified = result.lastModified
-          this.remoteEtag = result.etag
-          this.remoteContentHash = result.contentHash
-        } catch (error) {
-          this.logger.warn('获取远程配置缓存信息失败:', error)
-        }
-      }
-
       const config = await loadMcpServersConfig(this.configPath)
+      const newRoutes = new Map<string, ServerRoute>()
 
-      this.serverRoutes.clear()
+      const serverNames = Object.keys(config.mcpServers)
 
-      for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
-        const route: ServerRoute = {
+      // 检查端口冲突
+      checkPortConflicts(config.mcpServers)
+
+      for (const name of serverNames) {
+        const serverConfig = config.mcpServers[name]
+        const defaults = getServerConfigDefaults(serverConfig)
+
+        newRoutes.set(name, {
           name,
-          port: serverConfig.port || 8000,
-          httpPath: serverConfig.httpPath || '/mcp',
-          ssePath: serverConfig.ssePath || '/sse',
-          messagePath: serverConfig.messagePath || '/message',
-          outputTransport: serverConfig.outputTransport,
-          isAvailable: true, // 初始状态假设可用，后续会检查
-        }
-
-        this.serverRoutes.set(name, route)
-        this.logger.info(`Loaded route: ${name} -> localhost:${route.port}`)
+          port: defaults.port,
+          httpPath: defaults.httpPath,
+          ssePath: defaults.ssePath,
+          messagePath: defaults.messagePath,
+          outputTransport: defaults.outputTransport,
+          isAvailable: true, // 默认可用
+        })
       }
 
-      this.logger.info(`Loaded ${this.serverRoutes.size} server routes`)
+      this.serverRoutes = newRoutes
+      this.logger.info(
+        `Successfully loaded ${this.serverRoutes.size} server routes.`,
+      )
     } catch (error) {
-      this.logger.error('Failed to load server routes:', error)
+      this.logger.error(
+        `Failed to load or parse new config from ${this.configPath}. Keeping existing routes.`,
+        error,
+      )
     }
   }
 
@@ -505,20 +500,50 @@ export class DynamicRouter {
 
   // 监听本地配置文件
   private watchLocalConfig(): void {
-    try {
-      const resolvedPath = path.resolve(this.configPath)
-      this.configWatcher = fs.watch(resolvedPath, (eventType) => {
-        if (eventType === 'change') {
-          this.logger.info('本地配置文件已更改，重新加载路由...')
-          setTimeout(() => {
-            this.loadServerRoutes()
-          }, 1000) // 延迟重载，避免文件写入过程中的问题
-        }
-      })
+    if (this.configWatcher) {
+      this.configWatcher.close()
+    }
 
-      this.logger.info(`监听本地配置文件: ${resolvedPath}`)
+    this.logger.info(
+      `Watching local config file for changes: ${this.configPath}`,
+    )
+
+    try {
+      const absolutePath = path.resolve(this.configPath)
+      if (!fs.existsSync(absolutePath)) {
+        this.logger.warn(
+          `Local config file not found: ${absolutePath}. Will not watch for changes.`,
+        )
+        return
+      }
+
+      this.configWatcher = fs.watch(
+        absolutePath,
+        async (eventType, filename) => {
+          if (eventType === 'change') {
+            this.logger.info(
+              `Config file changed: ${filename || ''}. Reloading routes...`,
+            )
+            try {
+              await this.loadServerRoutes()
+            } catch (error) {
+              this.logger.error('Error reloading server routes:', error)
+            }
+          }
+        },
+      )
+
+      this.configWatcher.on('error', (error) => {
+        this.logger.error(
+          `Error watching config file ${this.configPath}:`,
+          error,
+        )
+      })
     } catch (error) {
-      this.logger.error('监听本地配置文件失败:', error)
+      this.logger.error(
+        `Failed to start watching config file ${this.configPath}:`,
+        error,
+      )
     }
   }
 

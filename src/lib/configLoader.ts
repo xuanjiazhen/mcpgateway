@@ -309,13 +309,14 @@ function validateServerConfig(
 /**
  * 检查端口冲突
  */
-function checkPortConflicts(servers: Record<string, McpServerConfig>): void {
+export function checkPortConflicts(
+  servers: Record<string, McpServerConfig>,
+): void {
   const usedPorts = new Map<number, string>()
-
   for (const [serverName, config] of Object.entries(servers)) {
     if (config.port) {
-      const existingServer = usedPorts.get(config.port)
-      if (existingServer) {
+      if (usedPorts.has(config.port)) {
+        const existingServer = usedPorts.get(config.port)
         throw new Error(
           `端口冲突: 服务器 ${serverName} 和 ${existingServer} 都使用端口 ${config.port}`,
         )
