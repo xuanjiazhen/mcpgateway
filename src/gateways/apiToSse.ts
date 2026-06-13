@@ -724,275 +724,338 @@ export const apiToSse = async (args: ApiToSseArgs) => {
     res.json(mcpTemplate)
   })
 
-  // Create MCP server
-  const mcpServer = new McpServer({
-    name: mcpTemplate.server.name,
-    version: mcpTemplate.server.version || getVersion(),
-  })
+  function createMcpServer() {
+    const mcpServer = new McpServer({
+      name: mcpTemplate.server.name,
+      version: mcpTemplate.server.version || getVersion(),
+    })
 
-  // Add a debug tool that just logs the request
-  mcpServer.tool(
-    'debug',
-    'Log the tool call for debugging',
-    {
-      message: z.string().optional().describe('Optional message to log'),
-      data: z.any().optional().describe('Optional data to log'),
-      testMode: z
-        .boolean()
-        .optional()
-        .describe('If true, will return the input as output'),
-    },
-    async (params) => {
-      const msg = params.message || 'Debug tool called'
-      logger.info(`===== DEBUG TOOL CALL =====`)
-      logger.info(`Message: ${msg}`)
-
-      if (params.data !== undefined) {
-        try {
-          const dataStr =
-            typeof params.data === 'object'
-              ? JSON.stringify(params.data, null, 2)
-              : String(params.data)
-          logger.info(`Data: ${dataStr}`)
-        } catch (e) {
-          logger.info(
-            `Data: [Error serializing data: ${e instanceof Error ? e.message : String(e)}]`,
-          )
-        }
-      }
-
-      logger.info(`===== END DEBUG TOOL CALL =====`)
-
-      // For testing, we can echo back the input
-      const responseData = params.testMode
-        ? {
-            message: msg,
-            data: params.data,
-            timestamp: new Date().toISOString(),
-          }
-        : { content: msg, timestamp: new Date().toISOString() }
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(responseData, null, 2),
-          },
-        ],
-      }
-    },
-  )
-
-  // Register tools from template
-  logger.info(`Registering ${mcpTemplate.tools.length} tools:`)
-  for (const tool of mcpTemplate.tools) {
-    logger.info(
-      `Registering tool: ${tool.name} (${tool.args.length} parameters)`,
-    )
-
-    // Build parameter schema
-    const paramSchema: Record<string, z.ZodType<any>> = {}
-
-    if (tool.args && Array.isArray(tool.args)) {
-      for (const arg of tool.args) {
-        const paramType = (arg.type || 'string').toLowerCase()
-
-        try {
-          switch (paramType) {
-            case 'string':
-              paramSchema[arg.name] = arg.required
-                ? z.string()
-                : z.string().optional()
-              break
-            case 'number':
-            case 'integer':
-              paramSchema[arg.name] = arg.required
-                ? z
-                    .string()
-                    .transform((val) => Number(val))
-                    .pipe(z.number())
-                : z
-                    .string()
-                    .transform((val) => (val ? Number(val) : undefined))
-                    .pipe(z.number().optional())
-              break
-            case 'boolean':
-              paramSchema[arg.name] = arg.required
-                ? z.string().transform((val) => val === 'true' || val === '1')
-                : z
-                    .string()
-                    .optional()
-                    .transform((val) => val === 'true' || val === '1')
-              break
-            case 'array':
-              paramSchema[arg.name] = arg.required
-                ? z
-                    .string()
-                    .transform((val) => {
-                      try {
-                        return JSON.parse(val)
-                      } catch (e) {
-                        return val ? val.split(',') : []
-                      }
-                    })
-                    .pipe(z.array(z.any()))
-                : z
-                    .string()
-                    .optional()
-                    .transform((val) => {
-                      if (!val) return undefined
-                      try {
-                        return JSON.parse(val)
-                      } catch (e) {
-                        return val.split(',')
-                      }
-                    })
-                    .pipe(z.array(z.any()).optional())
-              break
-            case 'object':
-              paramSchema[arg.name] = arg.required
-                ? z
-                    .string()
-                    .transform((val) => {
-                      try {
-                        return JSON.parse(val)
-                      } catch (e) {
-                        return {}
-                      }
-                    })
-                    .pipe(z.record(z.any()))
-                : z
-                    .string()
-                    .optional()
-                    .transform((val) => {
-                      if (!val) return undefined
-                      try {
-                        return JSON.parse(val)
-                      } catch (e) {
-                        return {}
-                      }
-                    })
-                    .pipe(z.record(z.any()).optional())
-              break
-            default:
-              paramSchema[arg.name] = arg.required
-                ? z.string()
-                : z.string().optional()
-          }
-        } catch (error) {
-          logger.error(
-            `Failed to create parameter validator: ${arg.name}`,
-            error,
-          )
-          // Fallback to string
-          paramSchema[arg.name] = arg.required
-            ? z.string()
-            : z.string().optional()
-        }
-      }
-    }
-
-    // Dump the full parameter schema for debugging
-    logger.info(
-      `Tool ${tool.name} parameter schema: ${JSON.stringify(Object.keys(paramSchema))}`,
-    )
-
-    // Register tool
+    // Add a debug tool that just logs the request
     mcpServer.tool(
-      tool.name,
-      tool.description,
-      paramSchema,
-      async (toolParams, context) => {
-        try {
-          logger.info(`========== EXECUTING TOOL: ${tool.name} ==========`)
-          logger.info(`Tool parameters: ${JSON.stringify(toolParams)}`)
+      'debug',
+      'Log the tool call for debugging',
+      {
+        message: z.string().optional().describe('Optional message to log'),
+        data: z.any().optional().describe('Optional data to log'),
+        testMode: z
+          .boolean()
+          .optional()
+          .describe('If true, will return the input as output'),
+      },
+      async (params) => {
+        const msg = params.message || 'Debug tool called'
+        logger.info(`===== DEBUG TOOL CALL =====`)
+        logger.info(`Message: ${msg}`)
 
-          // 获取当前会话ID和相关头信息
-          const sessionId = currentSessionId
-          const clientHeaders = sessionId
-            ? sessionHeaders[sessionId]
-            : undefined
-
-          if (clientHeaders) {
+        if (params.data !== undefined) {
+          try {
+            const dataStr =
+              typeof params.data === 'object'
+                ? JSON.stringify(params.data, null, 2)
+                : String(params.data)
+            logger.info(`Data: ${dataStr}`)
+          } catch (e) {
             logger.info(
-              `Client headers found for session ${sessionId}: ${JSON.stringify(Object.keys(clientHeaders))}`,
+              `Data: [Error serializing data: ${e instanceof Error ? e.message : String(e)}]`,
             )
-          } else {
-            logger.info(`No client headers available for this request`)
           }
+        }
 
-          const result = await handleMcpRequest(
-            tool.name,
-            toolParams,
-            tool,
-            args.apiHost,
-            args.headers || {},
-            logger,
-            clientHeaders,
-          )
+        logger.info(`===== END DEBUG TOOL CALL =====`)
 
-          // Format response
-          let responseText = ''
+        // For testing, we can echo back the input
+        const responseData = params.testMode
+          ? {
+              message: msg,
+              data: params.data,
+              timestamp: new Date().toISOString(),
+            }
+          : { content: msg, timestamp: new Date().toISOString() }
 
-          if (typeof result === 'string') {
-            responseText = result
-          } else if (result && result.error) {
-            // 如果API调用返回了错误，记录详细日志并返回格式化的错误消息
-            logger.error(`API调用错误 (${tool.name}): ${result.error}`)
-            responseText = JSON.stringify(
-              {
-                error: result.error,
-                toolName: tool.name,
-                timestamp: new Date().toISOString(),
-              },
-              null,
-              2,
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(responseData, null, 2),
+            },
+          ],
+        }
+      },
+    )
+
+    // Register tools from template
+    logger.info(`Registering ${mcpTemplate.tools.length} tools:`)
+    for (const tool of mcpTemplate.tools) {
+      logger.info(
+        `Registering tool: ${tool.name} (${tool.args.length} parameters)`,
+      )
+
+      // Build parameter schema
+      const paramSchema: Record<string, z.ZodType<any>> = {}
+
+      if (tool.args && Array.isArray(tool.args)) {
+        for (const arg of tool.args) {
+          const paramType = (arg.type || 'string').toLowerCase()
+
+          try {
+            switch (paramType) {
+              case 'string':
+                paramSchema[arg.name] = arg.required
+                  ? z.string()
+                  : z.string().optional()
+                break
+              case 'number':
+              case 'integer':
+                paramSchema[arg.name] = arg.required
+                  ? z
+                      .string()
+                      .transform((val) => Number(val))
+                      .pipe(z.number())
+                  : z
+                      .string()
+                      .transform((val) => (val ? Number(val) : undefined))
+                      .pipe(z.number().optional())
+                break
+              case 'boolean':
+                paramSchema[arg.name] = arg.required
+                  ? z.string().transform((val) => val === 'true' || val === '1')
+                  : z
+                      .string()
+                      .optional()
+                      .transform((val) => val === 'true' || val === '1')
+                break
+              case 'array':
+                paramSchema[arg.name] = arg.required
+                  ? z
+                      .string()
+                      .transform((val) => {
+                        try {
+                          return JSON.parse(val)
+                        } catch (e) {
+                          return val ? val.split(',') : []
+                        }
+                      })
+                      .pipe(z.array(z.any()))
+                  : z
+                      .string()
+                      .optional()
+                      .transform((val) => {
+                        if (!val) return undefined
+                        try {
+                          return JSON.parse(val)
+                        } catch (e) {
+                          return val.split(',')
+                        }
+                      })
+                      .pipe(z.array(z.any()).optional())
+                break
+              case 'object':
+                paramSchema[arg.name] = arg.required
+                  ? z
+                      .string()
+                      .transform((val) => {
+                        try {
+                          return JSON.parse(val)
+                        } catch (e) {
+                          return {}
+                        }
+                      })
+                      .pipe(z.record(z.any()))
+                  : z
+                      .string()
+                      .optional()
+                      .transform((val) => {
+                        if (!val) return undefined
+                        try {
+                          return JSON.parse(val)
+                        } catch (e) {
+                          return {}
+                        }
+                      })
+                      .pipe(z.record(z.any()).optional())
+                break
+              default:
+                paramSchema[arg.name] = arg.required
+                  ? z.string()
+                  : z.string().optional()
+            }
+          } catch (error) {
+            logger.error(
+              `Failed to create parameter validator: ${arg.name}`,
+              error,
             )
-          } else if (
-            result === null ||
-            result === undefined ||
-            (typeof result === 'object' && Object.keys(result).length === 0)
-          ) {
-            // 处理空结果或空对象情况
-            logger.warn(`工具 ${tool.name} 返回了空结果或空对象`)
-            responseText = JSON.stringify(
-              {
-                message: 'API调用成功但返回了空结果',
-                toolName: tool.name,
-                timestamp: new Date().toISOString(),
-              },
-              null,
-              2,
+            // Fallback to string
+            paramSchema[arg.name] = arg.required
+              ? z.string()
+              : z.string().optional()
+          }
+        }
+      }
+
+      // Dump the full parameter schema for debugging
+      logger.info(
+        `Tool ${tool.name} parameter schema: ${JSON.stringify(Object.keys(paramSchema))}`,
+      )
+
+      // Register tool
+      mcpServer.tool(
+        tool.name,
+        tool.description,
+        paramSchema,
+        async (toolParams, context) => {
+          try {
+            logger.info(`========== EXECUTING TOOL: ${tool.name} ==========`)
+            logger.info(`Tool parameters: ${JSON.stringify(toolParams)}`)
+
+            // 获取当前会话ID和相关头信息
+            const sessionId = currentSessionId
+            const clientHeaders = sessionId
+              ? sessionHeaders[sessionId]
+              : undefined
+
+            if (clientHeaders) {
+              logger.info(
+                `Client headers found for session ${sessionId}: ${JSON.stringify(Object.keys(clientHeaders))}`,
+              )
+            } else {
+              logger.info(`No client headers available for this request`)
+            }
+
+            const result = await handleMcpRequest(
+              tool.name,
+              toolParams,
+              tool,
+              args.apiHost,
+              args.headers || {},
+              logger,
+              clientHeaders,
             )
-          } else {
-            try {
-              responseText = JSON.stringify(result, null, 2)
-            } catch (error) {
-              responseText = `Unable to serialize result: ${String(result)}`
+
+            // Format response
+            let responseText = ''
+
+            if (typeof result === 'string') {
+              responseText = result
+            } else if (result && result.error) {
+              // 如果API调用返回了错误，记录详细日志并返回格式化的错误消息
+              logger.error(`API调用错误 (${tool.name}): ${result.error}`)
+              responseText = JSON.stringify(
+                {
+                  error: result.error,
+                  toolName: tool.name,
+                  timestamp: new Date().toISOString(),
+                },
+                null,
+                2,
+              )
+            } else if (
+              result === null ||
+              result === undefined ||
+              (typeof result === 'object' && Object.keys(result).length === 0)
+            ) {
+              // 处理空结果或空对象情况
+              logger.warn(`工具 ${tool.name} 返回了空结果或空对象`)
+              responseText = JSON.stringify(
+                {
+                  message: 'API调用成功但返回了空结果',
+                  toolName: tool.name,
+                  timestamp: new Date().toISOString(),
+                },
+                null,
+                2,
+              )
+            } else {
+              try {
+                responseText = JSON.stringify(result, null, 2)
+              } catch (error) {
+                responseText = `Unable to serialize result: ${String(result)}`
+              }
+            }
+
+            logger.info(
+              `Tool execution result for ${tool.name}: ${responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText}`,
+            )
+            logger.info(`========== FINISHED TOOL: ${tool.name} ==========`)
+
+            // 确保空结果也能返回有意义的内容
+            const isEmptyResult =
+              responseText === '{}' ||
+              responseText === '[]' ||
+              responseText === 'null' ||
+              responseText === ''
+
+            if (isEmptyResult) {
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify(
+                      {
+                        message: 'API调用成功，但返回空结果或空对象',
+                        toolName: tool.name,
+                        timestamp: new Date().toISOString(),
+                      },
+                      null,
+                      2,
+                    ),
+                  },
+                ],
+              }
+            }
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: responseText,
+                },
+              ],
+            }
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error)
+            logger.error(`Tool execution failed (${tool.name}): ${msg}`, error)
+            logger.error(`========== FAILED TOOL: ${tool.name} ==========`)
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `Execution failed: ${msg}`,
+                },
+              ],
             }
           }
+        },
+      )
+    }
 
+    // Additionally, register a tools/call handler to properly handle the general-purpose MCP tool call format
+    mcpServer.tool(
+      'tools/call',
+      'Call a tool by name with arguments',
+      {
+        name: z.string().describe('Tool name to call'),
+        arguments: z.record(z.any()).optional().describe('Tool arguments'),
+      },
+      async (params) => {
+        try {
+          logger.info(`========== TOOLS/CALL HANDLER ==========`)
           logger.info(
-            `Tool execution result for ${tool.name}: ${responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText}`,
+            `Received tools/call request with params: ${JSON.stringify(params)}`,
           )
-          logger.info(`========== FINISHED TOOL: ${tool.name} ==========`)
 
-          // 确保空结果也能返回有意义的内容
-          const isEmptyResult =
-            responseText === '{}' ||
-            responseText === '[]' ||
-            responseText === 'null' ||
-            responseText === ''
+          const { name, arguments: toolArgs = {} } = params
 
-          if (isEmptyResult) {
+          // Find the tool by name
+          const tool = mcpTemplate.tools.find((t) => t.name === name)
+          if (!tool) {
+            logger.error(`Tool not found: ${name}`)
             return {
               content: [
                 {
                   type: 'text',
                   text: JSON.stringify(
                     {
-                      message: 'API调用成功，但返回空结果或空对象',
-                      toolName: tool.name,
+                      error: `Tool not found: ${name}`,
                       timestamp: new Date().toISOString(),
                     },
                     null,
@@ -1003,22 +1066,88 @@ export const apiToSse = async (args: ApiToSseArgs) => {
             }
           }
 
+          logger.info(
+            `Found tool: ${name}, executing with arguments: ${JSON.stringify(toolArgs)}`,
+          )
+
+          // Get client headers
+          const sessionId = currentSessionId
+          const clientHeaders = sessionId
+            ? sessionHeaders[sessionId]
+            : undefined
+
+          // Call the tool implementation
+          const result = await handleMcpRequest(
+            name,
+            toolArgs,
+            tool,
+            args.apiHost, // Using the apiHost from the top-level args parameter
+            args.headers || {}, // Using the headers from the top-level args parameter
+            logger,
+            clientHeaders,
+          )
+
+          // Process result
+          let resultText = ''
+          if (typeof result === 'string') {
+            resultText = result
+          } else if (result && result.error) {
+            resultText = JSON.stringify(
+              {
+                error: result.error,
+                toolName: name,
+                timestamp: new Date().toISOString(),
+              },
+              null,
+              2,
+            )
+          } else if (
+            result === null ||
+            result === undefined ||
+            (typeof result === 'object' && Object.keys(result).length === 0)
+          ) {
+            resultText = JSON.stringify(
+              {
+                message: 'API call succeeded but returned an empty result',
+                toolName: name,
+                timestamp: new Date().toISOString(),
+              },
+              null,
+              2,
+            )
+          } else {
+            try {
+              resultText = JSON.stringify(result, null, 2)
+            } catch (error) {
+              resultText = `Unable to serialize result: ${String(result)}`
+            }
+          }
+
+          logger.info(
+            `tools/call result for ${name}: ${
+              resultText.length > 200
+                ? resultText.substring(0, 200) + '...'
+                : resultText
+            }`,
+          )
+          logger.info(`========== TOOLS/CALL HANDLER FINISHED ==========`)
+
           return {
             content: [
               {
                 type: 'text',
-                text: responseText,
+                text: resultText,
               },
             ],
           }
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error)
-          logger.error(`Tool execution failed (${tool.name}): ${msg}`, error)
-          logger.error(`========== FAILED TOOL: ${tool.name} ==========`)
+          logger.error(`tools/call execution failed: ${msg}`, error)
+          logger.error(`========== TOOLS/CALL HANDLER FAILED ==========`)
           return {
             content: [
               {
-                type: 'text' as const,
+                type: 'text',
                 text: `Execution failed: ${msg}`,
               },
             ],
@@ -1026,6 +1155,8 @@ export const apiToSse = async (args: ApiToSseArgs) => {
         }
       },
     )
+
+    return mcpServer
   }
 
   // SSE endpoint
@@ -1104,8 +1235,29 @@ export const apiToSse = async (args: ApiToSseArgs) => {
 
       // Connect to MCP server
       logger.info(`Connecting transport to MCP server...`)
+      const mcpServer = createMcpServer()
       await mcpServer.connect(sseTransport)
       logger.info(`Transport connected to MCP server successfully`)
+      let closed = false
+      const cleanupSession = (reason: string, err?: unknown) => {
+        if (closed) return
+        closed = true
+        if (err) {
+          logger.error(`${reason} (session ${sessionId || 'none'}):`, err)
+        } else {
+          logger.info(`${reason} (session ${sessionId || 'none'})`)
+        }
+        if (sessionId) {
+          delete transports[sessionId]
+          delete sessionHeaders[sessionId]
+        }
+        mcpServer.close().catch((closeErr) => {
+          logger.error(
+            `Failed to close MCP server (session ${sessionId || 'none'}):`,
+            closeErr,
+          )
+        })
+      }
 
       if (sessionId) {
         transports[sessionId] = sseTransport
@@ -1117,32 +1269,17 @@ export const apiToSse = async (args: ApiToSseArgs) => {
 
       // Cleanup on client disconnect
       req.on('close', () => {
-        if (sessionId) {
-          logger.info(`Client disconnected (session ${sessionId})`)
-          delete transports[sessionId]
-        } else {
-          logger.info(`Client disconnected (no session ID)`)
-        }
+        cleanupSession('Client disconnected')
       })
 
       // Handle SSE errors
       sseTransport.onerror = (err) => {
-        if (sessionId) {
-          logger.error(`SSE error (session ${sessionId}):`, err)
-          delete transports[sessionId]
-        } else {
-          logger.error(`SSE error (no session ID):`, err)
-        }
+        cleanupSession('SSE error', err)
       }
 
       // Handle SSE closure
       sseTransport.onclose = () => {
-        if (sessionId) {
-          logger.info(`SSE connection closed (session ${sessionId})`)
-          delete transports[sessionId]
-        } else {
-          logger.info(`SSE connection closed (no session ID)`)
-        }
+        cleanupSession('SSE connection closed')
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
@@ -1595,132 +1732,6 @@ export const apiToSse = async (args: ApiToSseArgs) => {
   app.post(args.messagePath, async (req, res) => {
     await handleMessageRequest(req, res)
   })
-
-  // Additionally, register a tools/call handler to properly handle the general-purpose MCP tool call format
-  mcpServer.tool(
-    'tools/call',
-    'Call a tool by name with arguments',
-    {
-      name: z.string().describe('Tool name to call'),
-      arguments: z.record(z.any()).optional().describe('Tool arguments'),
-    },
-    async (params) => {
-      try {
-        logger.info(`========== TOOLS/CALL HANDLER ==========`)
-        logger.info(
-          `Received tools/call request with params: ${JSON.stringify(params)}`,
-        )
-
-        const { name, arguments: toolArgs = {} } = params
-
-        // Find the tool by name
-        const tool = mcpTemplate.tools.find((t) => t.name === name)
-        if (!tool) {
-          logger.error(`Tool not found: ${name}`)
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(
-                  {
-                    error: `Tool not found: ${name}`,
-                    timestamp: new Date().toISOString(),
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          }
-        }
-
-        logger.info(
-          `Found tool: ${name}, executing with arguments: ${JSON.stringify(toolArgs)}`,
-        )
-
-        // Get client headers
-        const sessionId = currentSessionId
-        const clientHeaders = sessionId ? sessionHeaders[sessionId] : undefined
-
-        // Call the tool implementation
-        const result = await handleMcpRequest(
-          name,
-          toolArgs,
-          tool,
-          args.apiHost, // Using the apiHost from the top-level args parameter
-          args.headers || {}, // Using the headers from the top-level args parameter
-          logger,
-          clientHeaders,
-        )
-
-        // Process result
-        let resultText = ''
-        if (typeof result === 'string') {
-          resultText = result
-        } else if (result && result.error) {
-          resultText = JSON.stringify(
-            {
-              error: result.error,
-              toolName: name,
-              timestamp: new Date().toISOString(),
-            },
-            null,
-            2,
-          )
-        } else if (
-          result === null ||
-          result === undefined ||
-          (typeof result === 'object' && Object.keys(result).length === 0)
-        ) {
-          resultText = JSON.stringify(
-            {
-              message: 'API调用成功但返回了空结果',
-              toolName: name,
-              timestamp: new Date().toISOString(),
-            },
-            null,
-            2,
-          )
-        } else {
-          try {
-            resultText = JSON.stringify(result, null, 2)
-          } catch (error) {
-            resultText = `Unable to serialize result: ${String(result)}`
-          }
-        }
-
-        logger.info(
-          `tools/call result for ${name}: ${
-            resultText.length > 200
-              ? resultText.substring(0, 200) + '...'
-              : resultText
-          }`,
-        )
-        logger.info(`========== TOOLS/CALL HANDLER FINISHED ==========`)
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: resultText,
-            },
-          ],
-        }
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        logger.error(`tools/call execution failed: ${msg}`, error)
-        logger.error(`========== TOOLS/CALL HANDLER FAILED ==========`)
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Execution failed: ${msg}`,
-            },
-          ],
-        }
-      }
-    },
-  )
 
   // Start server
   const server = app.listen(args.port, () => {

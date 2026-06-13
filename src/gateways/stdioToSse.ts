@@ -83,11 +83,6 @@ export async function stdioToSse(args: StdioToSseArgs) {
     process.exit(code ?? 1)
   })
 
-  const server = new Server(
-    { name: 'mcpgateway', version: getVersion() },
-    { capabilities: {} },
-  )
-
   const sessions: Record<
     string,
     { transport: SSEServerTransport; response: express.Response }
@@ -123,9 +118,24 @@ export async function stdioToSse(args: StdioToSseArgs) {
     })
 
     const sseTransport = new SSEServerTransport(`${baseUrl}${messagePath}`, res)
+    const server = new Server(
+      { name: 'mcpgateway', version: getVersion() },
+      { capabilities: {} },
+    )
     await server.connect(sseTransport)
 
     const sessionId = sseTransport.sessionId
+    let closed = false
+    const cleanupSession = (reason: string) => {
+      if (closed) return
+      closed = true
+      logger.info(`${reason} (session ${sessionId})`)
+      delete sessions[sessionId]
+      server.close().catch((err) => {
+        logger.error(`Failed to close MCP server (session ${sessionId}):`, err)
+      })
+    }
+
     if (sessionId) {
       sessions[sessionId] = { transport: sseTransport, response: res }
     }
@@ -136,18 +146,16 @@ export async function stdioToSse(args: StdioToSseArgs) {
     }
 
     sseTransport.onclose = () => {
-      logger.info(`SSE connection closed (session ${sessionId})`)
-      delete sessions[sessionId]
+      cleanupSession('SSE connection closed')
     }
 
     sseTransport.onerror = (err) => {
       logger.error(`SSE error (session ${sessionId}):`, err)
-      delete sessions[sessionId]
+      cleanupSession('SSE connection errored')
     }
 
     req.on('close', () => {
-      logger.info(`Client disconnected (session ${sessionId})`)
-      delete sessions[sessionId]
+      cleanupSession('Client disconnected')
     })
   })
 
